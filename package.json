@@ -1,0 +1,13 @@
+{
+  "name": "afterspace-foundry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Afterspace — local asset library and isometric sketch engine",
+  "scripts": {
+    "start": "node tools/foundry/server.mjs --open",
+    "serve": "node tools/foundry/server.mjs",
+    "validate": "node tools/foundry/validate.mjs",
+    "new": "node tools/foundry/new-asset.mjs"
+  }
+}

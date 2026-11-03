@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Afterspace — Foundry</title>
+  <meta name="description" content="The Afterspace asset library. Every asset drawn from code.">
+  <meta name="theme-color" content="#F7F4EC">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script>
+    try {
+      if (localStorage.getItem('as.theme') === 'night') document.documentElement.dataset.theme = 'night';
+    } catch {}
+  </script>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/foundry.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="rail" id="rail" aria-label="Library navigation">
+      <div class="brand">
+        <svg class="ring-mark" viewBox="0 0 48 48" aria-hidden="true">
+          <ellipse cx="24" cy="24" rx="17.5" ry="8" fill="none" stroke="currentColor" stroke-width="1.5" transform="rotate(-24 24 24)"/>
+          <ellipse cx="24" cy="24" rx="17.5" ry="8" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".28" transform="rotate(56 24 24)"/>
+          <circle cx="37.5" cy="14.5" r="2.6" fill="#B08D3F"/>
+        </svg>
+        <div>
+          <div class="brand-eyebrow">The Afterspace</div>
+          <div class="brand-name">Foundry</div>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Sections">
+        <button id="nav-library" class="active" type="button">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="2" width="4.6" height="4.6" rx="1"/><rect x="9.4" y="2" width="4.6" height="4.6" rx="1"/><rect x="2" y="9.4" width="4.6" height="4.6" rx="1"/><rect x="9.4" y="9.4" width="4.6" height="4.6" rx="1"/></svg>
+          Library
+          <span class="nav-count" id="nav-count">0</span>
+        </button>
+        <button id="nav-guide" type="button">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2.5 3.2c2-.7 3.7-.4 5.5.8v9c-1.8-1.2-3.5-1.5-5.5-.8v-9Z"/><path d="M13.5 3.2c-2-.7-3.7-.4-5.5.8v9c1.8-1.2 3.5-1.5 5.5-.8v-9Z"/></svg>
+          Guide
+        </button>
+      </nav>
+
+      <div>
+        <p class="rail-label">Categories</p>
+        <div class="cats" id="cat-list"></div>
+      </div>
+
+      <div class="rail-foot">
+        <div class="status" id="status">
+          <span class="status-dot"></span>
+          <span id="status-text">connecting…</span>
+          <small id="status-meta"></small>
+        </div>
+        <div class="foot-row">
+          <button class="toggle on" id="follow-toggle" type="button" aria-pressed="true" title="Open newly added assets automatically">
+            <i></i>Follow edits
+          </button>
+          <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch day / night" title="Day / night">
+            <svg class="sun" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="3.2"/><path d="M8 1.2v1.5M8 13.3v1.5M1.2 8h1.5M13.3 8h1.5M3.2 3.2l1 1M11.8 11.8l1 1M12.8 3.2l-1 1M4.2 11.8l-1 1"/></svg>
+            <svg class="moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13.4 9.5A5.6 5.6 0 0 1 6.5 2.6a5.6 5.6 0 1 0 6.9 6.9Z"/></svg>
+          </button>
+        </div>
+        <div class="status"><small id="rail-meta">port 4321</small></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="title-block">
+          <div class="eyebrow-row">
+            <button class="menu-btn" id="menu-btn" type="button" aria-label="Open menu">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg>
+            </button>
+            <div class="eyebrow">Library / <span id="crumb">All assets</span></div>
+          </div>
+          <h1 class="page-title" id="page-title">All assets</h1>
+          <div class="page-sub"><b id="shown-count">0</b> assets · <span id="sub-note">warm habitat palette · 1 tile = 2 m</span></div>
+        </div>
+        <div class="controls">
+          <label class="search" id="search-wrap">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.6"/><path d="m10.5 10.5 3 3"/></svg>
+            <input id="search" type="search" placeholder="Search assets, keys, tags…" autocomplete="off" spellcheck="false">
+            <kbd>/</kbd>
+            <button class="clear" id="search-clear" type="button" aria-label="Clear search">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+            </button>
+          </label>
+          <div class="select-wrap">
+            <select class="select" id="status-filter" aria-label="Review status">
+              <option value="all">Any status</option>
+              <option value="review">In review</option>
+              <option value="approved">Approved</option>
+            </select>
+          </div>
+          <div class="select-wrap">
+            <select class="select" id="sort" aria-label="Sort assets">
+              <option value="category">Category</option>
+              <option value="newest">Newest</option>
+              <option value="az">A–Z</option>
+            </select>
+          </div>
+        </div>
+      </header>
+
+      <section class="filters" id="filters" aria-label="Filter by category">
+        <button class="pill active" type="button" data-cat="all">All <span class="n" id="all-count">0</span></button>
+        <span class="spacer"></span>
+        <span class="result-note" id="result-note"></span>
+      </section>
+
+      <section class="assets" id="grid" aria-live="polite" aria-busy="true"></section>
+    </main>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+
+  <dialog class="inspector" id="inspector" aria-labelledby="ins-title">
+    <div class="inspector-shell">
+      <header class="ins-head">
+        <div>
+          <div class="eyebrow" id="ins-cat">ASSET</div>
+          <h2 class="ins-title" id="ins-title">Asset</h2>
+          <div class="ins-sub" id="ins-sub">key</div>
+        </div>
+        <div class="ins-head-right">
+          <button class="icon-btn" id="ins-source" type="button" title="Open source file" aria-label="Open source file">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m5.5 4.5-4 3.5 4 3.5M10.5 4.5l4 3.5-4 3.5M9.2 2.5 6.8 13.5"/></svg>
+          </button>
+          <button class="ins-close" id="ins-close" type="button" aria-label="Close inspector">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="ins-stage" id="ins-stage">
+        <canvas class="ins-canvas" id="ins-canvas"></canvas>
+        <div class="orbit-hint" id="orbit-hint">drag to orbit · 90° snap</div>
+        <div class="scale-note" id="scale-note"><b>Scale check</b> · 1 tile = 2 m</div>
+        <div class="squint" id="squint"><canvas id="squint-canvas" width="144" height="96"></canvas><span>32 PX</span></div>
+      </div>
+
+      <div class="ins-views" id="ins-views" role="group" aria-label="View angle">
+        <button class="view-btn" type="button" data-angle="0">0° Front</button>
+        <button class="view-btn" type="button" data-angle="90">90° Right</button>
+        <button class="view-btn" type="button" data-angle="180">180° Back</button>
+        <button class="view-btn" type="button" data-angle="270">270° Left</button>
+      </div>
+
+      <div class="ins-body">
+        <div class="meta-grid" id="ins-meta"></div>
+        <div class="tags" id="ins-tags"></div>
+        <div class="snippet-head"><span>Drawing snippet</span><button id="copy-code" type="button">Copy</button></div>
+        <pre class="snippet"><code id="ins-code"></code></pre>
+      </div>
+
+      <div class="ins-actions">
+        <button class="btn primary" id="copy-canvas" type="button">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2"/><path d="m5 11 2.5-3 2 2.5L12 7"/></svg>
+          Copy Canvas 2D
+        </button>
+        <button class="btn" id="download-png" type="button">Export PNG</button>
+        <button class="btn" id="copy-module" type="button">Copy module</button>
+        <button class="btn ghost" id="scale-toggle" type="button">Scale check</button>
+        <button class="btn ghost" id="squint-toggle" type="button">32 px test</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="inspector guide" id="guide" aria-labelledby="guide-title">
+    <div class="inspector-shell">
+      <header class="ins-head">
+        <div>
+          <div class="eyebrow">Field guide</div>
+          <h2 class="ins-title" id="guide-title">Working with assets</h2>
+          <div class="ins-sub">save = publish</div>
+        </div>
+        <div class="ins-head-right">
+          <button class="ins-close" id="guide-close" type="button" aria-label="Close guide">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="guide-body">
+        <p><b>Every asset is code.</b> The Foundry watches <code>assets/</code>. Saving a file repaints the gallery in about a second — no upload, no build step, no image files.</p>
+
+        <h3>Add an asset</h3>
+        <ol>
+          <li>Create a file in <code>assets/&lt;category&gt;/&lt;key&gt;.js</code>.</li>
+          <li>Export a default object with <code>key</code>, <code>name</code>, <code>category</code>, <code>blurb</code>, <code>what</code>, <code>footprint</code>, <code>height</code>, <code>tags</code> and <code>draw(g)</code>.</li>
+          <li>Draw with the primitives below. Keep the whole object inside the declared footprint.</li>
+          <li>Save. The gallery updates, the inspector refreshes in place, and validation runs automatically.</li>
+        </ol>
+
+        <h3>Primitives</h3>
+        <div class="guide-grid">
+          <div><b>g.box</b>Axis-aligned volume. The workhorse: walls, crates, chassis.</div>
+          <div><b>g.roof</b>Pitched roof, ridge on x or y, with gable ends.</div>
+          <div><b>g.cyl</b>Silos, tanks, bales, wheels. <code>axis: 'z' | 'x' | 'y'</code>, plus <code>r2</code> for a cone.</div>
+          <div><b>g.circle</b>Camera-facing circle. Canopies, berries, lamp glow.</div>
+          <div><b>g.decal</b>Flat screen-space polygon at a world anchor. Signs, blades, flags.</div>
+          <div><b>Parts</b>Shared tree, wheel, window and door helpers live in <code>assets/lib/parts.js</code>.</div>
+        </div>
+
+        <h3>The bar</h3>
+        <p>Readable at 32 px. Three to six shapes. Four colours plus the shared shadow. Fixed upper-left light, no outlines, no gradients, no text inside the art. If a detail vanishes at thumbnail size, delete it.</p>
+
+        <h3>Working live</h3>
+        <p>Keep this tab open while we work. New assets appear with a toast and a dot; edits update the open inspector without losing the current orbit. Broken files become a single error card and never take the library down. Turn on <b>Follow edits</b> in the rail to open new assets automatically.</p>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="tooltip" id="tooltip" role="tooltip" aria-hidden="true">
+    <div class="tip-meta"><span class="tip-dot" id="tip-dot"></span><span id="tip-cat">CATEGORY</span><span>·</span><span class="tip-what" id="tip-what">asset</span></div>
+    <div class="tip-name" id="tip-name">Asset</div>
+    <div class="tip-bar"><i id="tip-bar"></i></div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

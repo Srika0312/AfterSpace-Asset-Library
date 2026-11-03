@@ -1,0 +1,93 @@
+/* The Afterspace — Foundry design tokens */
+
+@font-face {
+  font-family: 'Fredoka';
+  src: url('/fonts/fredoka-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Fredoka';
+  src: url('/fonts/fredoka-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/nunito-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/nunito-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/nunito-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --paper: #f7f4ec;
+  --panel: #fcfaf4;
+  --card: #fffdf8;
+  --card-flat: #fbf8f0;
+  --ink: #3a3026;
+  --ink-soft: #6f604e;
+  --muted: #8c7b66;
+  --line: #e5dcc9;
+  --line-strong: #d7cbb7;
+  --accent: #6e8a46;
+  --accent-ink: #42552a;
+  --accent-tint: #eef3e4;
+  --brass: #b08d3f;
+  --warn: #a97a22;
+  --warn-tint: #faf0d8;
+  --danger: #b24a3f;
+  --danger-tint: #f9e5e1;
+  --stage-glow: radial-gradient(circle at 50% 56%, #fffdf8 0%, #f8f3e8 58%, #f2ebdc 100%);
+  --shadow-card: 0 14px 26px -22px rgba(58, 48, 38, 0.45);
+  --shadow-lift: 0 24px 40px -24px rgba(58, 48, 38, 0.5);
+  --shadow-panel: 0 40px 90px -40px rgba(30, 24, 18, 0.55);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --rail-width: 226px;
+  --font-body: Nunito, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: Fredoka, Nunito, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SFMono-Regular', Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+[data-theme='night'] {
+  --paper: #12181b;
+  --panel: #182024;
+  --card: #1c2529;
+  --card-flat: #182125;
+  --ink: #f1ece1;
+  --ink-soft: #c3b7a4;
+  --muted: #8e8271;
+  --line: #2b363a;
+  --line-strong: #3b494e;
+  --accent: #a9c27b;
+  --accent-ink: #d6e6b7;
+  --accent-tint: #25322b;
+  --brass: #d0ad5a;
+  --warn: #e0a33e;
+  --warn-tint: #322815;
+  --danger: #e07a6b;
+  --danger-tint: #35201d;
+  --stage-glow: radial-gradient(circle at 50% 56%, #283438 0%, #1b2428 58%, #151d20 100%);
+  --shadow-card: 0 16px 30px -24px rgba(0, 0, 0, 0.8);
+  --shadow-lift: 0 26px 44px -24px rgba(0, 0, 0, 0.85);
+  --shadow-panel: 0 50px 110px -40px rgba(0, 0, 0, 0.9);
+  color-scheme: dark;
+}

@@ -1,0 +1,2508 @@
+# COPY-PASTE PROMPT FOR CHATGPT
+# MEADOWVALE CITY — COMPLETE REVERSE-ENGINEERED DOSSIER AND REBUILD BRIEF
+
+You are ChatGPT, acting as a senior game engineer and technical co-founder. The text below is your complete context for understanding **Meadowvale City** (`https://meadowvale-city-mv.web.app/`) and for building an original equivalent. Read all of it before answering. Treat it as the source of truth. Do not summarize it back to me unless I ask.
+
+---
+
+## 1. WHAT MEADOWVALE IS
+
+Meadowvale City is a **static, browser-based, isometric city-builder** with an optional shared **live city** mode. It has:
+
+- no framework
+- no bundler
+- no build step
+- no module imports
+- 36 plain JavaScript files loaded by `<script>` tags in a fixed order
+- all state shared through globals on `window`
+- a single HTML canvas for the world
+- DOM for the HUD, menus, dialogs, and toasts
+- Canvas 2D for all rendering
+- Web Audio synthesis for all sound
+- zero image files, zero audio files, zero video files
+- localStorage for saves
+- an optional Google Apps Script / Google Sheet / Firestore-style backend for live mode
+
+The player draws roads, paints zones (farms, neighbourhoods, parks, industry, services), and watches a procedural town arrange itself, grow, populate, and animate. Traffic, pedestrians, trains, boats, planes, fires, weather, day/night, and service dispatch run continuously. The economy is light: zones earn coins, power affects income, services need roads, and the town grows over game time.
+
+There are two products sharing one engine:
+
+| Product | Route | Mode | Data source | Who edits |
+|---|---|---|---|---|
+| Builder | `/` (`index.html`) | `builder` | local `localStorage` | the player |
+| Live city | `/live` (`live.html`) | `spectator` by default; hidden `builder` for the owner | published snapshot + roster | owner only |
+
+`index.html` blanks `MV_CONFIG.backend` and `MV_CONFIG.sheet`; `live.html` keeps them. That single difference turns a local sandbox into a networked spectator experience.
+
+---
+
+## 2. VERIFIED SCALE AND FACTS
+
+| Fact | Value |
+|---|---|
+| Routes | `/`, `/live`, `/architecture`, `/patches`, `/assets`, `/privacy` |
+| Runtime scripts | 36, plain `<script>` tags, fixed order |
+| Code | ~8,360 LOC across 36 JS files |
+| Payload | ~1.4 MB total including 8 WOFF2 font subsets |
+| Binary art/audio | 0 PNG/JPG/MP3/WAV/video files |
+| Renderer | one HTML canvas, Canvas 2D, depth-sorted pass |
+| Save format | snapshot `v:5` in `localStorage` |
+| App save slots | 12 |
+| Autosave | every 30,000 ms + on `visibilitychange` |
+| Projection | `P(x,y,z) = [(x-y)*32, (x+y)*16 - z*30]` |
+| Tile key | `(y+32768)*65536 + (x+32768)` |
+| Chunk size | 20×20 tiles |
+| Day length | 420 real seconds at 1× |
+| Live day | 3,600 real seconds (one game day per real hour) |
+| Patches | 11 `day*` files, ~2.2k LOC |
+| Asset catalog | 609 headline entries; 135 painters, 18 core 3D, 16 vehicles, 172 kinds, 218 tools, 19 synths, 7 canvas buffers, 8 fonts, 15 SVGs |
+
+**Critical correction:** the site's docs say "30 Hz fixed step" in one table, but the actual loop uses a variable frame delta clamped to 50 ms, multiplied by a speed control. `HZ = 30` is a projection constant — pixels of vertical rise per height unit — not the simulation tick rate.
+
+---
+
+## 3. PAGE-BY-PAGE AUDIT — EVERY ROUTE
+
+### 3.1 `/` — the game shell and builder
+
+**What it is:** a full-viewport canvas with a DOM overlay.
+
+**What the player sees:**
+
+- loading screen
+- home menu rewritten by `app.js` into two large buttons: **Build your city** and **View live city**
+- build screen with **Continue**, **New city**, **Discover worlds**, **Load city**
+- new-world cards with live canvas previews
+- world cards for curated generated worlds and a real-place preset
+- save-slot list (12 slots)
+- in-game HUD: money, population, power supply/demand, weather, date/time, speed controls
+- dock: 8 top-level categories, each with sub-group pills, each containing tools
+- dialogs: settings, graphics, sound, leave city, save, live cards, Hall of Fame, newspaper, passwords, player card, bank
+- toasts and floating money text
+
+**How it works:**
+
+1. `index.html` loads `config.js`.
+2. It blanks `MV_CONFIG.backend` and `MV_CONFIG.sheet`.
+3. It loads 36 scripts in fixed order.
+4. `core.js` creates the canvas context, constants, projection helpers, catalogs, camera, and offscreen sprites.
+5. `ui.js` ends by calling `requestAnimationFrame(frame)`.
+6. `mode` starts as `boot`; the app shows the menu.
+7. Choosing a world calls `startWorld(def, opts)`, which resets modules, generates terrain/chunks, seeds a starter town, and enters `play`.
+8. `frame()` runs camera easing, `liveTick`, `update(dt*speed)`, `render()`, `livePost()`, HUD updates — each in its own `try/catch`.
+9. `app.js` wraps the engine with 12 save slots, 30-second autosave, save-on-background, Android back handling, and a leave-city confirmation.
+
+**Concept:** a calm, mouse/touch-first sandbox where you sketch a town and watch it live.  
+**Working principle:** one canvas + DOM HUD; input mutates a tile/zone graph; simulation advances it; renderer draws a sorted view; localStorage snapshots it.  
+**Architecture principle:** the shell is thin; the canvas is the product. DOM is for text, menus, and dialogs — never per-tile or per-building.
+
+The builder makes no backend calls. Analytics, fonts, and the `/_vercel/insights/script.js` tag are the only possible network requests.
+
+### 3.2 `/live` — the shared city
+
+**What the visitor sees:**
+
+- same engine and HUD, opening on a published city
+- live card: city name, day, population, publish status, resident search
+- search by Instagram handle to find "your" resident
+- tap residents/buildings to see home, job, profile, stats
+- suggestions to the mayor, votes, job/role applications, event notifications
+- new residents arriving by plane or train; hotels until a home is free
+- owner unlock: tap the sound button five times, then enter a code
+
+**How it works:**
+
+- `live.html` sets `window.MV_LIVE=1`, keeps `config.js` intact.
+- `app.js` detects `MV_LIVE` and exposes only a home path; it disables builder UI and casino tables in the packaged app (`!MV_WEB`), keeping the app a viewing experience.
+- `live.js` defines spectator/owner modes, the shared clock, resident roster, jobs/homes, arrivals, suggestions, roles, publish/load.
+- The live city is a **snapshot**, not an authoritative real-time simulation. Every viewer runs the same rules locally from the same snapshot and the same wall-clock anchor.
+- The backend is optional: Apps Script + Sheet, a host-injected Firestore-style adapter, or static `data/city.json`.
+
+**Concept:** a soap-opera version of the builder — the town is the cast, the followers are the residents, the owner is the mayor.  
+**Working principle:** publish a compact world snapshot; every client rehydrates it and runs deterministic resident allocation against a shared clock.  
+**Architecture principle:** read-only shared world + local simulation + tiny write API. The server stores snapshots and small actions, never frame-by-frame state.
+
+### 3.3 `/architecture` — system documentation
+
+**Contents:**
+
+- overview and stack
+- boot order in 11 phases
+- runtime layers
+- game loop and time
+- projection
+- rendering pipeline
+- asset pipeline
+- state and persistence
+- live city backend
+- patch model
+- build story
+- file map with all 36 scripts and LOC
+- deployment
+- "how this documentation was built"
+
+**How it works:**
+
+- pure HTML + inline CSS
+- no runtime JS; anchors and smooth scroll only
+- source links point at the deployed JS files
+- line counts measured with `wc -l`
+- boot order parsed from `<script>` tags
+- dependency map built by scanning declarations and cross-file references
+
+**Concept:** documentation as part of the product, deployed with the code.  
+**Working principle:** static, source-linked, measurement-based prose.  
+**Architecture principle:** docs live beside the artifact and link to exact files — but hand-maintained docs drift.
+
+### 3.4 `/patches` — the patch ledger
+
+**Contents:** eleven cards, one per `day*` patch, in load order. Each states:
+
+- theme and shipped features
+- functions/registries introduced or replaced
+- mechanism used: function replacement, painter registration, catalog mutation, runtime CSS
+- measured LOC and file size
+- link to deployed source
+
+**Concept:** a changelog that doubles as an architecture lesson — the game grew by appending scripts, not rebuilding.  
+**Working principle:** each patch loads after the code it changes; later assignments win; registries mutate in place.  
+**Architecture principle:** load order is the dependency graph and the version history. The cost is that current behaviour is the sum of all previous assignments.
+
+### 3.5 `/assets` — interactive catalog
+
+**Contents:** searchable, filterable catalog advertised as 609 assets:
+
+- 135 `DRAWX` painters
+- 18 core 3D objects
+- 16 vehicles
+- 172 terrain and structure kinds
+- 218 catalog tools
+- 19 Web Audio synths
+- 7 canvas buffers
+- 8 WOFF2 font subsets
+- 15 UI vector SVGs
+
+**How it works:**
+
+- documentation/tool page, not part of the game loop
+- a hidden iframe loads `index.html` so native painters and catalogs exist
+- the page calls those painters to render previews
+- Web Audio previews instantiate the same synthesis recipes
+- search is client-side text filtering over pre-rendered cards
+
+**Concept:** make the invisible asset layer inspectable.  
+**Working principle:** reuse runtime registries as the source of truth; render previews with real painters.  
+**Architecture principle:** content is data + a painter function, so a catalog can be generated from registration.
+
+Caveat: 609 is a catalog headline, not files. The visible category totals sum to 608. There are zero image/audio/video binaries.
+
+### 3.6 `/privacy` — policy
+
+**What it states:**
+
+- applies to the Android app and website
+- built cities, settings, votes are **on-device only**; never sent; deleting app data deletes them
+- sent to live backend: suggestions (name + message), resident changes (job, age, gender, hobby, home), votes, role claims
+- stored in a Google Sheet run by Apps Script
+- live residents are public Instagram handles of followers; no other Instagram data
+- random device code used to count one vote per device and count visits
+- Google Analytics 4: interactions, random identifier, basic device info, approximate IP-based location; not used for advertising
+- no sale of data, no advertiser sharing, no contacts/photos/camera/mic/precise location, no ads
+- HTTPS; deletion/correction requests within 30 days
+- not for children under 13
+
+**Concept:** local-first privacy for the creative product; explicit disclosure for the social layer.  
+**Working principle:** separate "your city" (device) from "the shared city" (server).  
+**Architecture principle:** the network is an optional, narrow side-channel, not the source of truth for single-player.
+
+---
+
+## 4. THE 36-SCRIPT BOOT GRAPH
+
+`index.html` and `live.html` load the same scripts in this order. The order is the dependency graph.
+
+```
+ 1  config.js          MV_CONFIG
+ 2  analytics.js       conditional GA4 loader
+ 3  core.js            constants, helpers, canvas, projection, catalogs
+ 4  zones.js           zone shapes, generators, placement, growth
+ 5  roads.js           road graph, signs, fences, chunk decor
+ 6  rail.js            8-direction rail graph, crossings, trains
+ 7  world.js           terrain, water, boats, preset worlds
+ 8  sim.js             tick: economy, traffic, people, services, weather
+ 9  render.js          depth-sorted draw pass, effects
+10  buildings.js       base building catalog and painters
+11  audio.js           procedural music/ambience/SFX
+12  input.js           pointer/pinch, tools, hover, previews, camera
+13  extras.js          barriers, shop variety, fairground, army base, cheats
+14  scenarios.js       hand-planned region-inspired worlds
+15  landmarks.js       stadium, megastore, airport, island
+16  extras2.js         vehicles, wildlife, easter eggs, aircraft
+17  places.js          food, culture, sport, monuments, zoo, education
+18  places2.js         per-building shapes, colours, lot filling
+19  ui.js              HUD, dock, menus, dialogs, save/load, main loop
+20  live.js            live city, residents, jobs/homes, backend sync
+21  systems.js         metro, civic roles, coliseum events
+22  areas.js           named areas dragged over the map
+23  places3.js         factories, lighthouse, resort, casino, prison, Yamato
+24  extras3.js         deterministic building variants from seed
+25  day9.js            ranks, job finder, passwords, plots, 17 painters
+26  day10.js           quality tiers, shores, ground types, footpaths
+27  day11.js           Founders' Quarter plots, owners, construction, newspaper
+28  day12.js           unified wallet, frame smoothing, road-join repair
+29  day13.js           art pass: planting, roof signs, statues
+30  day15.js           land market, Hall of Fame, minimap
+31  day15b.js          Halloween overlay: ghosts, bats, ghost ship, sea monster
+32  day15c.js          observatory, dealership, spa, Kazakh district
+33  day16.js           wallet/job/home fixes, player card, bank loans
+34  day16b.js          day care, agency, florist, law firm, luxury builds
+35  day16c.js          Hall of Fame podium, bank tab, crowns
+36  app.js             home screen, 12 save slots, autosave, back button
+```
+
+Load-order rules:
+
+- `core.js` must precede everything using `idx`, `P`, `KIND`, `DRAWX`, `TOOLS`.
+- `zones/roads/rail/world` must precede `sim` and `render`.
+- `ui.js` must precede `live.js` and `app.js` where they wrap UI functions.
+- `app.js` is last because it wraps `save`, `startWorld`, `goMenu`, `showScreen`.
+- `day*` patches are last because they intentionally override earlier globals.
+
+There is no tree-shaking, dead-code elimination, or static analysis. A missing file or reordered tag produces `undefined is not a function`.
+
+---
+
+## 5. GLOBAL NAMESPACES AND STATE CONTAINERS
+
+Important registries:
+
+| Name | Shape | Meaning |
+|---|---|---|
+| `KIND` | `{ [kind]: KindDef }` | every zone/building kind: name, shape, ground colour, size limits, income, flags |
+| `TOOLS` | `ToolDef[]` | dock tools: mode (`rect`, `line`, `rail`, `paint`, `sign`, `fence`, `fac`, etc.), cost, kind/crop/tree, hints |
+| `DRAWX` | `{ [key]: (obj, progress) => void }` | painter lookup used by the renderer |
+| `GEN` | `{ [kind]: (zone, rng) => void }` | zone content generators |
+| `WORLDS` | `WorldChoice[]` | curated worlds on the menu |
+| `TERRAINS` | `{t, name, desc}[]` | lakeside, seaside, inland |
+| `CROPS` | `{ [crop]: {name, grow, val, ripe} }` | field economy |
+| `FENCES` | `FenceDef[]` | fence/wall/tree-row types |
+| `CATS` | `{id, name, subs[]}[]` | dock categories and sub-groups |
+| `LIVE` | object | live-mode state, config, residents, sync |
+| `MV_CONFIG` | object | `sheet`, `backend`, `ga`, `moveHourUTC`, `dateOrder` |
+| `MV_LIVE`, `MV_WEB`, `MV_APP` | booleans | build/page flags set inline in HTML |
+
+State containers:
+
+```
+zones        Map<zoneId, Zone>          all placed zones
+zoneList     Zone[]                     active zones, rebuilt on change
+ownerM       Map<tileIndex, zoneId>     tile ownership
+roadM        Map<tileIndex, roadType>   road tiles (1..5)
+linkM        Map<tileIndex, 4-bit mask> road connections
+railM        Map<tileIndex, 8-bit mask> rail connections
+railBlk      Map<tileIndex, count>      corner-block tiles
+crossings    Map<tileIndex, {open}>     road/rail crossings
+fenceM       Map<edgeKey, fenceType>    fence edges
+signM        Map<tileIndex, signType>   stop/lights/truck signs
+buckets      Map<chunkKey, Object[]>    render objects by chunk
+vehicles     Vehicle[]                  cars, buses, trucks, service vehicles
+peds         Pedestrian[]               walkers
+animals      Animal[]                   wildlife/livestock
+boats        Boat[]                     lake/sea boats
+planes       Plane[]                    aircraft
+trains       Train[]                    rail trains
+particles    Particle[]                 smoke, dust, rain, fire
+dyingObjs    Object[]                   objects animating out
+dyingZones   Zone[]                     zones animating out
+genChunks    Set<chunkKey>              generated terrain chunks
+```
+
+The world is **not** a scene graph of retained DOM nodes or parent/child transforms. It is flat maps keyed by packed tile indices plus per-chunk object arrays.
+
+---
+
+## 6. RUNTIME LAYERS AND THE REAL FRAME LOOP
+
+Layers, top to bottom:
+
+```
+DOM shell: HUD, dock, menus, dialogs, toasts, screens
+Input & tools: pointer, pinch, pan, hover, previews
+World state: zones, roads, rails, ownership, objects, residents, economy, weather
+Simulation: update(dt) — growth, traffic, services, time
+Renderer: render() — one canvas, sorted pass, effects
+Persistence: snapshot/restore, localStorage, live publish
+```
+
+Data flows one way per frame: input mutates tool state and, on commit, world state; simulation mutates world state; renderer reads world state; UI reads summary state. The renderer does not change world topology or economy; it only writes ephemeral draw fields such as projected anchors, depth, and light lists.
+
+The actual loop from `ui.js`:
+
+```js
+let last = performance.now();
+
+function frame(now) {
+  const dtR = Math.min(0.05, (now - last) / 1000); // clamp to 50 ms
+  last = now;
+  FDT = dtR;
+  RT = now / 1000;                                  // wall-clock seconds
+
+  if (mode === 'loading' || mode === 'boot') {
+    requestAnimationFrame(frame);
+    return;
+  }
+
+  if (mode === 'menu') menuCam(dtR);
+
+  if (Math.abs(cam.tz - cam.z) > 0.0005) {
+    cam.z = lerp(cam.z, cam.tz, Math.min(1, dtR * 14));
+    if (cam.anchor) { /* keep world point under cursor */ }
+  } else cam.anchor = null;
+
+  if (!panS && !pinch && (Math.abs(cam.vx) > 0.01 || Math.abs(cam.vy) > 0.01)) {
+    cam.x += cam.vx; cam.y += cam.vy;
+    cam.vx *= 0.9; cam.vy *= 0.9;
+  }
+
+  clampCam();
+  computeView();
+  ensureVisibleChunks(2);
+
+  if (drag && drag.pending && performance.now() - drag.t0 > 160 && pts.size === 1)
+    resolvePending();
+
+  requestAnimationFrame(frame);
+
+  try { if (typeof liveTick === 'function') liveTick(dtR); }
+  catch (e) { if (!frame.errL) { frame.errL = 1; console.error(e); } }
+
+  try { update(dtR * speed); }
+  catch (e) { if (!frame.errU) { frame.errU = 1; console.error(e); } }
+
+  try { render(); }
+  catch (e) {
+    ctx.restore && ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.setLineDash([]);
+    if (!frame.errR) { frame.errR = 1; console.error(e); }
+  }
+
+  try { if (typeof livePost === 'function') livePost(); }
+  catch (e) { if (!frame.errP) { frame.errP = 1; console.error(e); } }
+
+  try { updateHud(); updateHoverInfo(); } catch (e) {}
+}
+```
+
+Properties:
+
+- variable timestep, clamped to 50 ms
+- speed multiplier applied only to simulation: `update(dtR * speed)`, `speed ∈ {0,1,2,4}`
+- render runs every animation frame, independent of simulation speed
+- each subsystem has its own `try/catch` and logs once
+- camera work happens before simulation/render
+- `requestAnimationFrame` is scheduled before heavy work, so an error cannot permanently stop the loop
+- `RT` is wall-clock, used for animations, not game time
+
+### Time model
+
+```js
+const HZ = 30;       // pixels of vertical rise per height unit
+const DAY_S = 420;   // real seconds per in-game day at 1×
+```
+
+- full game day at 1× = 7 real minutes
+- `dtH = dt * 24 / DAY_S` converts real seconds to game hours
+- `gameMin += dtH * 60` accumulates in-game minutes
+- `gh() = gameMin / 60` returns game hours
+- `hourOfDay() = (gameMin / 60) % 24`
+- night factor: 1 before 05:00, fades to 0 by 07:00, 0 until 18:30, fades to 1 by 20:30
+- at 4× speed, one game day takes 1m45s
+- live mode uses `LIVE_DAY = 3600` real seconds per game day, anchored at `LIVE.founded`
+
+`HZ` is used in projection (`... - z * HZ`) and object-local drawing. It is not a 30 Hz tick.
+
+---
+
+## 7. COORDINATES, PROJECTION, CHUNKS, CAMERA
+
+### Tile keys
+
+```js
+const K16 = 32768;
+const idx = (x, y) => (y + K16) * 65536 + (x + K16);
+const tX = i => i % 65536 - K16;
+const tY = i => Math.floor(i / 65536) - K16;
+```
+
+- x/y in `[-32768, 32767]` map to `[0, 65535]`
+- unique 32-bit-safe integer in JavaScript
+- decode exactly with `%` and `floor`
+- used as Map keys for roads, rails, ownership, signs, crossings, object lookups
+
+Limits: coordinates outside ±32768 collide. Camera pan is clamped to ±600,000 screen-space, but tile generation is practically limited by the key space.
+
+### Chunk keys
+
+```js
+const CH = 20, OX = 9, OY = 7;
+const ckOf = (x, y) =>
+  (Math.floor((y - OY) / CH) + 50000) * 100000 +
+  (Math.floor((x - OX) / CH) + 50000);
+```
+
+- chunk edge = 20 tiles
+- `+50000` bias allows negative chunk coordinates
+- chunk key is one integer; `ckOf` is called constantly and must be allocation-free
+- `ckIJ` and inverse decode recover chunk coords and world origin
+- `visChunks()` computes visible chunk range from inverse-projected screen corners, then rejects chunks whose isometric bounding diamond is outside the view
+
+Chunk contents:
+
+- terrain water mask (`Uint8Array(20*20)`) and cached `Path2D` water shapes
+- road tile set (`roadByCk`)
+- rail tile set (`railByCk`)
+- object bucket (`buckets`)
+- decoration caches
+
+### Projection
+
+Two spaces matter:
+
+- **tile space** — integer tile coordinates `(x,y)`, height `z` in height units
+- **screen space** — CSS pixels at the current camera
+
+Core projection:
+
+```js
+const HZ = 30;
+const P = (x, y, z) => [ (x - y) * 32, (x + y) * 16 - z * HZ ];
+```
+
+So:
+
+- +x moves `(+32, +16)` px
+- +y moves `(-32, +16)` px
+- one height unit moves `(0, -30)` px
+- a tile is a diamond 64 px wide and 32 px tall at zoom 1
+
+World-to-screen:
+
+```js
+function w2s(wx, wy, wz = 0) {
+  return [
+    ((wx - wy) * 32 - cam.x) * cam.z + W / 2,
+    ((wx + wy) * 16 - wz * HZ - cam.y) * cam.z + H / 2
+  ];
+}
+```
+
+Screen-to-world on the ground plane:
+
+```js
+function s2w(sx, sy) {
+  const ix = (sx - W / 2) / cam.z + cam.x;
+  const iy = (sy - H / 2) / cam.z + cam.y;
+  const a = ix / 32, b = iy / 16;
+  return [ (a + b) / 2, (b - a) / 2 ];
+}
+```
+
+`cam.x` / `cam.y` are in projected pixel space before zoom. `cam.z` is zoom. `W/H` are CSS viewport dimensions. `DPR` is applied separately.
+
+### The two canvas transforms
+
+World transform for ground-plane drawing in tile units:
+
+```js
+function setWorldTf() {
+  const k = cam.z * DPR;
+  ctx.setTransform(
+    k * 32, k * 16,
+    -k * 32, k * 16,
+    (W / 2 - cam.x * cam.z) * DPR,
+    (H / 2 - cam.y * cam.z) * DPR
+  );
+}
+```
+
+After this, drawing in tile coordinates produces the correct isometric diamond. A 1×1 tile square becomes a 64×32 px diamond at zoom 1. Line widths are in tile units (e.g. `0.05`).
+
+Object transform for extruded objects drawn in local pixel units:
+
+```js
+function setObjTf(ix, iy) {
+  const k = cam.z * DPR;
+  ctx.setTransform(
+    k, 0, 0, k,
+    ((ix - cam.x) * cam.z + W / 2) * DPR,
+    ((iy - cam.y) * cam.z + H / 2) * DPR
+  );
+}
+```
+
+Here `ix = (x - y) * 32`, `iy = (x + y) * 16` is the object's projected ground anchor. Painters draw boxes/prisms in pixels: width 32, depth 16, height 30 per unit.
+
+This split is deliberate: ground/network geometry is drawn in tile space; objects are drawn in local screen-pixel space at a projected anchor.
+
+### Camera and view
+
+```js
+const cam = { x: 0, y: 0, z: 1, tz: 1, vx: 0, vy: 0, anchor: null };
+let MINZ = 0.35, MAXZ = 3.2;   // builder
+// live spectators use MINZ = 0.55
+```
+
+- `cam.x/y` pan in projected pixel space
+- `cam.z` current zoom, `cam.tz` target zoom, eased at `dt * 14`
+- anchored zoom keeps the world point under the cursor fixed
+- pan inertia decays by 0.9 per frame
+- `clampCam()` limits pan to ±600,000
+- `computeView()` inverse-projects four screen corners, expands by margin, stores `view.x0/x1/y0/y1` and center
+- `ensureVisibleChunks(2)` generates terrain chunks within a radius of 2 chunks beyond the view
+
+### Depth and culling
+
+Every drawable gets:
+
+```js
+o.d = o.x + o.y;          // painter's depth
+o.ix = (o.x - o.y) * 32;  // projected anchor x
+o.iy = (o.x + o.y) * 16;  // projected anchor y
+```
+
+The render list is sorted ascending by `d`, then drawn back-to-front.
+
+Culling levels:
+
+1. chunk culling via `visChunks()`
+2. object bucket culling — only visible chunks are considered
+3. screen-bounds culling with margins
+4. LOD — small objects skipped at low zoom, trees decimated by id, vehicles decimated 1/3, pedestrians hidden below `cam.z = 0.62`
+
+Margins are generous (`mx = 90`, `my0 = -40`, `my1 = 220`) so tall buildings and shadows do not pop at edges.
+
+### Invariants
+
+- one tile = one packed key
+- one chunk = one packed key
+- `idx`/`tX`/`tY` are total inverses in range
+- per-tile maps use `idx`, never `"x,y"` strings
+- projection is pure
+- depth is `x+y` for ground objects
+- camera never changes world state
+- terrain generation is pure `(worldSeed, chunk)`
+
+---
+
+## 8. WORLD GENERATION AND DATA MODEL
+
+### World definitions
+
+```js
+// generated
+{ type:'gen', terrain:'lake'|'sea'|'inland', seed: 20261008, rich: true, name:'Meadowvale Valley' }
+
+// preset
+{ type:'preset', id:'mb', name:'Menzel Bourguiba' }
+```
+
+`WDEF` is the active definition. `startWorld(def, opts)` resets module state via `worldResetHooks`, sets `WDEF`, builds terrain, seeds the starter town, enters play.
+
+Curated worlds:
+
+| id | Type | Terrain | Notes |
+|---|---|---|---|
+| `mb` | preset | real map | Menzel Bourguiba, Tunisia; OSM-derived compressed |
+| `valley` | generated | lake | classic lakeside valley, seed 20261008 |
+| `harbour` | generated | sea | coastal village, seed 777001 |
+| `brook` | generated | inland | river country, seed 31337 |
+
+New cities pick a random seed per terrain and render a preview canvas.
+
+### Terrain as a signed-distance field
+
+The generator does not store a heightmap for the whole world. It defines `F(x,y)`:
+
+- negative = water
+- positive = land
+- shoreline = zero contour
+
+Three families:
+
+**Lake / inland**
+
+- main lake blob plus smaller ponds
+- sums of sine-perturbed circles
+- river is a distance-to-polyline band
+- union is `min` of distances
+- optional `stjames` island in the main lake
+
+**Sea**
+
+```js
+const seaCoast = (Y0, x) =>
+  Y0 + 7*Math.sin(x/37 + 1.3)
+     + 3*Math.sin(x/13 + 0.4)
+     + 1.2*Math.sin(x/5.3 + 2);
+```
+
+`seaF(x,y) = coast(x) - y`; negative is sea.
+
+**Preset**
+
+- decodes compressed JSON
+- water mask as run-length base36 strings
+- roads as `y:start.length.type` runs
+- zones as delta-encoded rectangles with kind index and crop
+- rails as coordinate arrays
+- labels and start position
+
+### Chunk generation
+
+`ensureChunk(i,j)` generates a 20×20 terrain chunk lazily:
+
+1. compute chunk world origin `(OX + i*CH, OY + j*CH)`
+2. sample `F` on a 21×21 grid
+3. build a water mask (`Uint8Array(400)`)
+4. use marching squares to extract water/land contour paths into cached `Path2D`s (sand and rock variants for sea)
+5. cache sparkle points for water shimmer
+6. store in `genChunks`, `wCache`, `wPath`
+
+This is a strong pattern: sample a continuous field, extract contours, cache per chunk. It gives organic coastlines without tile autotiling and keeps memory proportional to visited area.
+
+`wMask(ck)` lazily builds the 20×20 water bitmap for gameplay checks (`isWaterT`), so terrain queries are O(1) after first touch.
+
+### Zones: the atomic place
+
+A zone is a rectangular claim with a shape, generator, and growth state.
+
+Core fields:
+
+```js
+{
+  id, kind,
+  x0, y0, x1, y1,          // axis-aligned claim rectangle
+  seed,
+  style,
+  sides,                   // which sides face roads/other zones
+  born, gborn,
+  level, maxLevel,
+  objs: [],                // live objects
+  feat: [],                // ground features
+  plan: [],                // planned objects per level
+  pasture: [],
+  tiles: [],               // owned tile keys
+  crop, title, cost,
+  clip,                    // optional Path2D clip
+  ...
+}
+```
+
+Ownership:
+
+- `ownerM: Map<tileIndex, zoneId>` — every tile inside the shape is claimed
+- `z.tiles` is the flattened list
+- `rectFree()` checks roads, rails, water, ownership before placement
+- `reshapeAround()` lets neighbouring auto-shaped zones re-fit when a new zone changes edge context
+
+### Zone shapes
+
+Three types:
+
+**`rect`**
+
+- simple rounded rectangle inset by 0.12 tiles
+
+**`rrect`**
+
+- rounded rectangle with per-side extensions
+- when a zone touches a road, the side facing the road extends by 0.5 tiles to meet pavement
+- when it touches another zone, it may retract or round
+- corner radii computed from active sides
+- adjacent zones meet without gaps
+
+**`blob`**
+
+- 64-point organic outline
+- superellipse + three sine harmonics:
+
+```js
+r = 1 + 0.07*sin(2t+a1) + 0.05*sin(3t+a2) + 0.035*sin(5t+a3)
+x = cx + rx * sign(cos t) * |cos t|^(2/p) * r
+y = cy + ry * sign(sin t) * |sin t|^(2/p) * r
+```
+
+- `p ≈ 2.2–3.5`
+- used for ponds, meadows, woods, windmill plots
+
+`computeShape(kind, rect, seed, force, self)` chooses the type from `KIND[kind].shape` and context, returns `{type, ext, pts, sides}`. `setZoneShape` builds the `Path2D`, computes projected bounding box (`z.bb`), and claims tiles.
+
+### Generators
+
+`GEN[kind](zone, rng)` populates a zone's plan.
+
+Examples:
+
+| Generator | Builds |
+|---|---|
+| `grass` | stripe patches, flower dots, scattered trees |
+| `pond` | water feature, reeds, ducks |
+| `field` | crop rows, orchard/olive tree grid, harvest state |
+| `farm` | farmhouse, barns, silos, shed, tractor, greenhouse, pond, fences, cypress rows, herd |
+| `ranch` | ranch house, barn, bales, fences, pasture, mixed herd |
+| `greenhouse` | service shed + rows of greenhouses |
+| `hamlet` | curved dirt lane, cottages, gardens, fences, level assignments |
+| `silos` | silo yard |
+| `windmill` / `turbine` | single rotating object |
+| `houses` | residential street with houses, gardens, driveways |
+| `shops` | main-street shops |
+| `apartments` | taller blocks |
+| `park` | paths, trees, benches, pond |
+
+Later files add military bases, cemeteries, stadiums, etc.
+
+Generators do not draw. They call helpers:
+
+- `place()` — find a free footprint
+- `addPlan()` — queue an object for a level
+- `fenceLine()`
+- `scatterTrees()`
+- `edgeRow()`
+- `doorPath()`
+- `featPond()`
+
+Separation:
+
+- `plan` = what will exist at each level
+- `objs` = what currently exists
+- `feat` = flat ground marks that never become objects
+
+### Growth over time
+
+Zones have `level` and `maxLevel`. `applyLevel(z, from, to, born)` reveals planned objects with an ease-out-back scale animation. Growth is driven by game time, not player clicks.
+
+Income:
+
+```js
+function zoneRate(z) {
+  const K = KIND[z.kind];
+  if (!K.inc) return 0;
+  let m = 1;
+  if (z.res || z.jobs) {
+    m = (1 + (z.bonus||0)) *
+        (0.55 + 0.45 * PWR.ratio) *
+        Math.max(0.75, 1 - (z.litter||0)*0.008);
+  }
+  return m * K.inc *
+    (K.flat ? 1 + weather.cover*0.4 : z.area) *
+    (1 + z.level*0.2) *
+    (K.flat && z.kind === 'turbine'
+      ? 1 + Math.hypot(weather.wind.x, weather.wind.y)
+      : 1);
+}
+```
+
+Income scales with area (unless flat), level, power ratio, weather, and litter. Fields pay on harvest instead of per tick.
+
+### Roads
+
+- `roadM: Map<tileKey, type>` where type 1=dirt, 2=country, 3=highway, 4=city, 5=boulevard
+- `linkM: Map<tileKey, 4-bit mask>` bits for E, S, W, N
+- `setRoad(x,y,type)` creates/removes a tile, updates neighbour links, clears wild objects, marks chunk decor dirty
+- one-way streets are a flag on the tool; traffic respects direction
+- wide roads commit as two parallel rows
+- signs (`stop`, `lights`, `trucks`, `notrucks`) live in `signM` and affect traffic
+- fences live in `fenceM` keyed by an edge key, not a tile; barriers run along tile edges and may not cross roads
+- decoration (lamps, stop signs, pavements, trees, markings) is generated into chunk caches from the road graph, not saved as objects
+
+The road graph is the navigation graph. `bfsPath(startTile, targetTile, maxNodes)` runs BFS over road tiles and returns a tile path; `dirsOf(path)` compresses it into directions.
+
+### Rail
+
+- `railM: Map<tileKey, 8-bit mask>` for N, NE, E, SE, S, SW, W, NW
+- `railLink(x,y,d)` connects a tile to a neighbour and marks the two corner tiles as blocked (`railBlk`) so a train cannot cut a sharp corner
+- `railDirty()` invalidates cached paths
+- crossings are created when rail is laid over a road; crossing barriers animate
+- trains follow the graph, bend at most 45°, stop at stations
+- rail supports bridges/tunnels visually, but the graph is flat
+
+The 8-direction choice lets rail curve diagonally while roads stay 4-direction.
+
+### Objects and buckets
+
+An object is a plain record:
+
+```js
+{
+  k: 'house',          // painter key
+  x, y,                // tile position
+  w, dep, h, rh,       // width, depth, height, roof height
+  col, rc,             // wall/roof colours
+  seed,                // deterministic variation
+  zid,                 // owning zone
+  born,                // animation start
+  user,                // user-placed tree — saved
+  dying,               // removal animation
+  ...
+}
+```
+
+`addObj(obj)` inserts into `buckets` at `ckOf(x,y)`. Generated objects live in their zone's `objs` and the bucket. On removal, objects go to `dyingObjs` for a short shrink/fade, then are deleted from both.
+
+Dual ownership:
+
+- zone list for simulation/economy/save
+- chunk bucket for rendering/culling
+
+### Ownership, fences, signs, litter
+
+- `ownerM` prevents overlaps and resolves clicks
+- `signM` stores traffic signs
+- `fenceM` stores edge barriers
+- litter counts affect income and trigger recycling crews
+- `linkM` and `railM` are navigation graphs
+- named areas (`areas.js`) are labels over the map, not zones
+
+### Determinism
+
+```js
+function rng(seed) {           // mulberry32-style
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function hash(x, y, s = 0) {   // stateless spatial hash → [0,1)
+  let h = Math.imul(x|0, 374761393)
+        + Math.imul(y|0, 668265263)
+        + Math.imul(s|0, 1442695041) | 0;
+  h = Math.imul(h ^ h >>> 13, 1274126177);
+  return ((h ^ h >>> 16) >>> 0) / 4294967296;
+}
+```
+
+Rules:
+
+- terrain is pure `(worldSeed, chunk)`
+- zone layout is pure `(seed, kind, rect, context)`
+- building variants use `hash(seed, id, salt)`, not `Math.random()`
+- live resident assignment uses `strHash(name)` and sorted ids
+- transient effects may use `Math.random()` because they are not saved
+
+For a rebuild: make all persistent generation seed-driven; keep `Math.random()` for ephemeral effects only.
+
+---
+
+## 9. SIMULATION
+
+### Tick
+
+`update(dt)` receives already speed-scaled real seconds.
+
+```js
+const dtH = dt * 24 / DAY_S;   // game hours elapsed
+gameMin += dtH * 60;
+```
+
+Order:
+
+1. weather and birds
+2. per-zone crops, level growth, income, chimney smoke
+3. city-wide power update once per second
+4. services (fires, police, medical, trash, school buses, post)
+5. vehicles
+6. pedestrians
+7. animals
+8. particles
+9. boats
+10. trains (network + local)
+11. planes
+12. dying object/zone cleanup
+
+Each subsystem is independent and iterates active lists. There is no global ECS; data structures are chosen per system.
+
+### Economy
+
+- `money` is a single integer
+- zone income accrues in `z.acc`, paid every 7–11 game hours
+- fields pay a lump sum on harvest
+- services and power affect multipliers
+- player spends on roads, zones, trees, signs, fences, services
+- no full supply chain; the economy is a light incentive layer
+
+Later patches add:
+
+- per-resident wallets (cash, casino, land, plot earnings)
+- land purchase/sale
+- construction projects taking in-game months
+- bank loans secured against land
+- luxury purchases
+- a net-worth Hall of Fame
+
+Architectural lesson: money should be derived from world state where possible, not accumulated in many scattered fields. Day-16 explicitly re-derives worth to stop drift.
+
+### Crops
+
+Each field stores `f = {growth, ripeT, wait, harv, hr, hb}` and `rows` metadata.
+
+- growth advances with game time, faster in rain, slower at night
+- when ripe, the field waits, then either pays directly (orchard/olive) or spawns a combine harvester
+- the harvester drives rows, emits dust, and finally pays
+- crops: wheat, corn, sunflower, lavender, cabbages, orchard, olive, with different grow times and values
+
+### Traffic
+
+Vehicles are simple agents on the road graph:
+
+- current tile, direction, speed, route, colour, type, service role
+- `bfsPath` computes a route; vehicles follow tile by tile
+- cars yield to vehicles ahead, obey one-way/truck signs and lights, pull into petrol stations
+- buses follow fixed stops/timetables in live mode
+- service vehicles (fire, police, ambulance, trash, school bus, post) dispatch from facilities
+- vehicle count scales with population; spawning is throttled and only near the view
+- at low zoom only a fraction are drawn
+
+No continuous steering physics. Movement is graph-based with lane offsets and interpolation.
+
+### Pedestrians
+
+- spawn near homes/shops, walk along footpaths or road edges
+- colour, umbrella, speed, destination, animation phase
+- simple bodies with a walk cycle
+- hidden below a zoom threshold
+- flavour, not a transport simulation
+
+### Services and BFS
+
+Facilities have radius and dispatch behaviour:
+
+- fire station: nearest fire within radius, sends truck along road graph
+- police: patrols/responds to incidents
+- hospital: ambulances visit homes and follow fire trucks
+- recycling depot: trucks stop along littered streets; crew cleans
+- school: bus does morning/afternoon rounds
+- post office: mail vans stop at homes
+- town hall: global income bonus, fireworks
+- power station: adds supply
+- petrol station: cars pull in and pay
+
+Dispatch uses `bfsPath` and chooses the closest eligible facility with a free vehicle. This runs only when an incident occurs, not every frame.
+
+### Power
+
+Power is a global ratio, not a per-building grid:
+
+```js
+PWR.sup = sum of power plants' output
+PWR.dem = sum of consumers' demand
+PWR.ratio = dem > 0 ? min(1, sup/dem) : 1
+```
+
+`updateCity()` recomputes once per second. Low ratio:
+
+- darkens windows at night
+- reduces zone income (0.55 + 0.45×ratio)
+- triggers UI warnings
+
+This is a deliberate simplification. A full electrical graph adds little player fantasy for a lot of UI and pathing complexity.
+
+### Weather and day/night
+
+Weather state machine:
+
+- states: fair, cloud, rain, storm, fog, snow (depending on content)
+- `weather.cover`, `weather.rain`, `weather.wind`, `weather.state`
+- transitions interpolate over time
+- rain/snow are particle overlays; fog is a radial-gradient sprite multiplied over the view
+- wind affects smoke, trees, turbines, rain angle
+
+Day/night:
+
+- `nightFactor()` from game hour
+- `sunInfo()` returns sun direction/elevation and shadow alpha
+- `ambient()` returns an RGB tint: warm at dawn/dusk, blue at night, grey in rain
+- night tint applied with `multiply`; window/street lights drawn with `lighter` using cached glow sprites
+- shadows computed from sun vector into one path, filled once
+
+### Fires, particles, planes, boats
+
+- fires have intensity, position, lifetime; spawn smoke/glow and dispatch responses
+- particles are records with position, velocity, life, colour, size, growth, glow flag
+- planes take off/land at air bases, fly across, blink at night
+- boats circle lakes/harbours, leave wakes
+- trains are graph agents with carriages; crossings close when a train approaches
+- Halloween adds purely visual ghosts, bats, ghost train, ghost ship, sea monster — no simulation coupling
+
+### Live residents in simulation
+
+Residents are not bodies with full schedules. Instead:
+
+- each has home zone id, work zone id, optional profile
+- `autoFill()` assigns homes/jobs deterministically
+- `applyRoles()` assigns civic roles
+- `liveDyn()` adds residents/arrivals to render list
+- `liveTick()` advances shared clock and triggers arrivals/queue processing
+- `livePost()` updates cards/UI
+
+Residents are data, not agents. Their "life" is inferred from home/work/role and rendered as people/vehicles around those places.
+
+### Simulation performance
+
+- only active lists iterated
+- city-wide power at 1 Hz
+- pathfinding event-driven
+- distant/offscreen entities culled/skipped
+- vehicle/pedestrian counts capped and scale with zoom/population
+- dying objects batched
+- frame budget protected by quality tiers/LOD
+
+---
+
+## 10. RENDERING
+
+### One canvas
+
+Exactly one visible `<canvas>`. No per-tile DOM, no WebGL, no sprite atlas. Context is 2D. `resize()` sets backing store to `W*DPR × H*DPR`, CSS size `W × H`.
+
+DPR caps:
+
+- 1.75 on narrow screens
+- 2 on desktop
+- 1.25 at lowest quality tier
+- 1 if `SUPER` is on
+
+### Pass order
+
+1. reset transform; fill canvas with land colour
+2. `setWorldTf()`; get visible chunks
+3. draw wild terrain and water (`drawWild`, `drawWater`)
+4. optional tile grid (only when build tool active and zoomed in)
+5. draw zone ground shapes and ground features (paths, ponds, field rows, fences)
+6. draw roads, rail network, rail tracks, crossings, litter
+7. collect drawables: objects from visible buckets; vehicles, peds, animals, harvesters, boats, trains, planes, fires; assign `d = x+y`, projected `ix/iy`
+8. sort by `d`
+9. build one shadow path for all objects, fill once
+10. draw each object in order with `setObjTf`, applying birth/death scale, painter lookup, headlights, service lights
+11. draw particles (non-glow), clouds (shadow pass), birds, clouds (light pass)
+12. apply ambient tint with `multiply`
+13. draw additive glows: windows, streetlights, headlights, flashes, glowing particles
+14. draw labels, rain, hover highlight, build preview
+15. draw floating text (money, notices)
+16. restore transforms/alpha
+
+This order is the visual contract. Changing it changes the look (e.g. drawing glows before ambient tint kills the night effect).
+
+### Depth sort details
+
+- `list.sort((a,b) => a.d - b.d)`
+- `d = x+y` for ground objects
+- planes use `d = x+y+alt*0.6`
+- fires use `d = x+y+0.02`
+- shadows drawn from sorted list into one path; no separate sort
+- list rebuilt every frame
+
+### Painter registry
+
+`DRAWX` is the extension point:
+
+```js
+DRAWX.obsv = (o, p) => { ... };
+DRAWX.house = (o, p) => { ... };
+```
+
+Renderer:
+
+```js
+const dx = DRAWX[o.k];
+if (dx) { dx(o, p); return; }
+```
+
+`p` is birth/death progress (0..1), used for scale-in. Painters draw in local pixel space:
+
+- `o.x, o.y` tile coordinates
+- `w`, `dep`, `h`, `rh` dimensions
+- `col`, `rc`, `seed` drive colour/variation
+- helpers: `box`, `prism`, `cyl`, `roof`, `window`, `wheel`, etc. in `buildings.js`/`places*.js`
+
+New building:
+
+1. `KIND` entry or direct object kind
+2. `DRAWX` painter
+3. optional `GEN` generator/`place()` plan
+4. optional `TOOLS` entry
+5. optional catalog mutation in a patch
+
+No renderer changes.
+
+### Shadows and lighting
+
+Shadows:
+
+- `sunInfo()` gives direction/alpha by hour/weather
+- `addShadow(path, object, sun)` projects simplified footprint/height silhouette into one `Path2D`
+- one translucent fill
+- tall objects, trees, vehicles have hand-tuned shadow shapes
+
+Night lighting:
+
+- window lights collected during painting into flat array `L` of `[sx, sy, radius, glowKey, alpha]`
+- headlights/service lights into `LF`
+- glow sprites blitted with `globalCompositeOperation = 'lighter'`
+- cached per colour: warm, white, pink, red, blue, green, fire
+- ambient tint is full-screen `multiply` fill: blue at night, warm dawn/dusk, grey rain
+
+Classic 2D lighting fake: no light volumes, just additive sprites + global tint.
+
+### Offscreen buffers
+
+| Buffer | Size | Purpose |
+|---|---|---|
+| Grain | 160×160 | random-pixel overlay, CSS background |
+| Glow | 64×64 per colour | radial gradient for lamps/windows/eyes/lava |
+| Fog | 128×128 | radial gradient blitted/scaled for sea/Halloween fog |
+| Minimap | city-sized or capped | pre-rendered once; blitted and hit-tested |
+| Preview cards | small | world thumbnails |
+| Water/terrain paths | per chunk | cached `Path2D` coastlines/water |
+| UI/canvas textures | various | icons/patterns |
+
+Minimap is the key performance decision: paint once, then blit and hit-test. Never re-render the whole city for a minimap.
+
+### LOD and quality tiers
+
+`PERF_LVL` 0 full, 1 lighter, 2 lightest, auto-selected from frame times and persisted as `mv.super`.
+
+At low zoom / low tier:
+
+- small objects (`LODSKIP`) skipped
+- trees decimated by `id % N`
+- vehicles decimated
+- pedestrians hidden below `cam.z = 0.62`
+- signs/tables/balloons skipped
+- shadows/particles reduced
+- rain may be disabled in `SUPER`
+
+Quality system is data-driven: flags/thresholds read by renderer; no separate render path.
+
+### Minimap
+
+`mapBuild()` renders the city once into an offscreen canvas:
+
+- terrain/water/roads/zones/buildings in simplified colours
+- cached until city changes enough to rebuild
+- `mapProj()` maps a click back to a tile
+- HUD/minimap blits cached image and draws viewport rectangle
+
+### Why Canvas 2D works
+
+Pros:
+
+- zero asset pipeline/licensing
+- infinite zoom without blur
+- per-instance recolouring
+- tiny payload
+- deterministic variants
+- one draw target
+- good enough for thousands of simple shapes
+
+Cons:
+
+- CPU-bound
+- per-object path construction expensive
+- shadows/lighting faked
+- large cities need culling/LOD
+- text/filters slow
+- mobile thermal throttling
+
+---
+
+## 11. INPUT AND UI
+
+### Pointer model
+
+- `pts: Map<pointerId, {x,y}>` tracks active pointers
+- one pointer + drag = pan or build drag
+- two pointers = pinch zoom + pan
+- tap = select/resolve
+- pending drag waits 160 ms to distinguish tap from drag
+- wheel = zoom
+- camera inertia after release
+- `resolvePending()` commits paint/delete actions for a tap that never became a drag
+
+### Tools
+
+Tool definition:
+
+```js
+{
+  id, name, cats:[...], sub,
+  mode: 'rect'|'line'|'rail'|'paint'|'sign'|'fence'|'fac'|'stamp'|'area'|'rgrid'|'plotmark',
+  kind, crop, tree, road, fence, sign, wide, oneway,
+  cost, cs,
+  hint
+}
+```
+
+Tool state drives cursor/hover highlight, valid/invalid preview colours, cost, commit behaviour, dock selection.
+
+Dock generated from `TOOLS` grouped by `CATS`; patches mutate catalogs and dock updates live.
+
+### Drag planning and commit
+
+`planDrag(drag)` builds a plan without mutating world:
+
+- line roads/rail/fences: compute tile path, validate, produce rows and bad tiles
+- rect zones: normalize rectangle, `rectFree`, cost, shape preview
+- paint: collect tiles under brush
+- sign: find target junction/road
+- facility/stamp: check footprint and road/water requirements
+
+`commitDrag(drag)` applies the plan:
+
+- set roads/rail/fences
+- create zones and run generators
+- place objects/facilities
+- subtract money
+- play sounds
+- mark chunks dirty
+
+Two-phase design: previews never corrupt state; validation centralized.
+
+### Hover, selection, info
+
+`updateHoverInfo()`:
+
+- pointer → tile
+- find zone/object
+- tooltip with name, level, residents/jobs, crop, owner
+- highlight hovered zone/object
+- for build tools, dimensions/cost/validity
+
+Selection:
+
+- click building/zone to pin a card
+- cards show stats/actions (upgrade, demolish, live resident info)
+- `pinnedSel` survives camera movement
+- `hoverSel` transient
+
+### HUD, dock, screens, dialogs
+
+UI is DOM, not canvas:
+
+- top HUD: money, population, power, weather, date/time, speed
+- dock: categories → sub-groups → tools, with cost/hints
+- menus: home, build, new world, worlds, saves
+- dialogs: settings, graphics, sound, leave, save, live cards, Hall of Fame, newspaper, passwords, player card, bank
+- toasts: short status
+- loading screen with progress
+
+Screens are `<section class="scr">` elements toggled by `showScreen(name)`. Canvas stays behind. Dialogs are absolutely positioned panels; later patches inject CSS.
+
+UI reads summary state (`money`, population, `PWR`, weather, `gameMin`) and writes commands (`selectTool`, `setSpeed`, `save`, `startWorld`). It does not own world state.
+
+### Save UX
+
+- autosave every 30 seconds in play
+- save on `visibilitychange` when hidden
+- save on leaving a city (confirmation)
+- manual save via menu
+- status text ("Saving…", "Saved HH:MM")
+- quota/storage errors toast, not crash
+- app shell migrates legacy single save into 12-slot list
+
+---
+
+## 12. PROCEDURAL ASSET SYSTEM
+
+### Inventory
+
+Advertised 609 catalog entries, zero binary image/audio/video:
+
+- 135 `DRAWX` painters
+- 18 core 3D objects
+- 16 vehicles
+- 172 terrain/structure kinds
+- 218 catalog tools
+- 19 Web Audio synths
+- 7 canvas buffers
+- 8 WOFF2 font subsets
+- 15 UI vector SVGs
+
+Category totals sum to 608; treat 609 as a headline catalog count, not a strict file count.
+
+### Painters
+
+A painter is `(object, progress) => void` drawing in local pixel space. Composed from helpers:
+
+- `box(w,d,h,col)` — isometric box
+- `prism` / `roof` — pitched/gable/hip roofs
+- `cyl` — silos, towers, tanks
+- `ellipse` / `arc` — wheels, domes, ponds
+- `window`, `door`, `sign`, `fence`, `tree`
+- `shade(hex, factor)` — cached colour darkening/lightening
+
+Painters can use object fields (width, depth, height, roof height, colours, seed) and `progress` for scale-in. They should be pure drawing functions.
+
+### Deterministic variants
+
+`extras3.js` and later content use `hash(seed, id, salt)` to pick:
+
+- roof style/colour
+- wall colour
+- window pattern
+- garden layout
+- extra props
+- tree species
+- vehicle colour
+
+Because seed is saved, reload looks the same. This is a sprite-variant system with zero atlas cost.
+
+### Audio
+
+`audio.js` synthesizes:
+
+- ambient music (oscillator pads/arpeggios)
+- birds, water, wind, rain
+- UI clicks
+- vehicle engines, horns, sirens
+- fireworks/explosions
+- crowd/fair ambience
+
+Typical graph: oscillator(s) → filter → gain envelope → destination; noise via short buffers; scheduling via `AudioContext.currentTime`. Sounds trigger from simulation events, with distance/zoom gating and throttling.
+
+No audio files, no decode, no licensing. Cost is CPU and designing patches.
+
+### Fonts and SVG
+
+- Fredoka (headings) and Nunito (body), 8 WOFF2 subsets
+- UI icons inline SVG in HTML or generated SVG strings
+- avatars inline SVG assembled from resident attributes (skin/hair/shirt/accessory)
+
+### Why zero binaries
+
+Benefits:
+
+- tiny transfer/instant deploy
+- no asset licensing
+- infinite zoom without blur
+- per-instance recolouring
+- deterministic variants
+- easy font localization
+- offline after first load
+
+Costs:
+
+- CPU-bound
+- every visual is code
+- harder for traditional artists
+- no baked AO/lightmaps
+- quality depends on programmer art
+
+### Add-content checklist
+
+1. `KIND` entry (name, shape, size limits, ground, income, road/water needs)
+2. `DRAWX` painter
+3. `TOOLS` entry if placeable
+4. `GEN` generator or `place()` plan if zone
+5. `CATS` sub-group for dock
+6. service dispatch if service
+7. live jobs/homes/roles if relevant
+8. test save/load reconstruction
+9. test culling/LOD at min/max zoom
+
+A painter + catalog entry is a feature.
+
+---
+
+## 13. PERSISTENCE
+
+### Two save systems
+
+1. **Engine save** — `save()` serializes active city to `localStorage` under `SKEY = 'meadowvale.v4'`. Format version is `v:5` despite legacy key name.
+2. **App shell slots** — `app.js` wraps `save()` and copies JSON into `mv.slot.<id>`, maintaining `mv.slots`. Up to 12 slots. Legacy single save migrated on first run.
+
+### Snapshot v5 schema
+
+```js
+{
+  v: 5,
+  def: { type:'gen'|'preset', terrain?, seed?, rich?, name?, id?, ... },
+  money: 12345,
+  gameMin: 4321,
+  wx: 'fair',
+  cam: [x, y, z],
+
+  zs: [{
+    id, k,
+    r: [x0, y0, x1, y1],
+    s,
+    sh: {type, ext},
+    sd: ['w','e',...],
+    l,
+    c,
+    g,
+    cost, h,
+    st, ho, t
+  }],
+
+  trees: [[x, y, variant, zoneId, scale], ...],
+  roads: [...],   // flat triples [tileKey, type, linkMask]
+  rails: [...],   // flat pairs [tileKey, 8-bit mask]
+  edges: [...],   // [edgeKey, fenceType]
+  signs: [...],   // [tileKey, signType]
+  ow: [...],      // [tileKey, zoneId]
+  gen: [chunkKey, ...],
+  settings: { grid: true },
+
+  // live-only
+  residents: [[name, homeZoneId, workZoneId, moveDay, profile?], ...],
+  founded: 1760000000000,
+  fold: 0,
+  auto: { h: true, j: true },
+  zcfg: { [zoneId]: { h: 80, j: 60 } },
+  gf: { h: 100, j: 90 },
+
+  // local-only
+  saved: 1760000000000
+}
+```
+
+Why this shape:
+
+- zones store inputs (`kind`, `rect`, `seed`, `shape`, `level`, `crop`), not generated object graph
+- on load, `createZone` re-runs generator and `applyLevel` reveals objects
+- roads/rails are flat numeric arrays
+- user trees are the only individually saved objects
+- `gen` records generated terrain chunks
+- `ow` preserves ownership where clipped
+- live residents are compact tuples
+
+### Local save code
+
+```js
+const SKEY = 'meadowvale.v4';
+
+function save() {
+  if (mode !== 'play') return false;
+  try {
+    const zs = [...zones.values()].map(z => ({
+      id: z.id, k: z.kind, r: [z.x0, z.y0, z.x1, z.y1],
+      s: z.seed, sh: z.shape, sd: z.sides, l: z.level,
+      c: z.crop, g: z.f ? +z.f.growth.toFixed(3) : undefined,
+      cost: z.cost, h: z.harvests,
+      st: z.style || undefined, ho: z.clip ? 1 : undefined,
+      t: z.title || undefined
+    }));
+
+    const trees = [];
+    for (const b of buckets.values())
+      for (const o of b)
+        if (o.user && !o.dying)
+          trees.push([+o.x.toFixed(2), +o.y.toFixed(2), o.v, o.zid, +o.s.toFixed(2)]);
+
+    const rd = [];
+    for (const [i, t] of roadM) rd.push(i, t, LKm(i));
+
+    const rl = [];
+    for (const [i, m] of railM) rl.push(i, m);
+
+    localStorage.setItem(SKEY, JSON.stringify({
+      v: 5, ow: [...owM], signs: [...signM], rails: rl, def: WDEF,
+      money, gameMin, zs, trees, roads: rd, edges: [...fenceM],
+      gen: [...genChunks], settings,
+      wx: weather.state, cam: [cam.x, cam.y, cam.z], saved: Date.now()
+    }));
+    return true;
+  } catch (e) {
+    toast('Could not save: browser storage is full or blocked');
+    return false;
+  }
+}
+```
+
+`readSave()` accepts `v === 4 || v === 5`; `applySave()` branches on road tuple stride.
+
+### Slot manager
+
+```js
+const IDX = 'mv.slots';
+const SLOT = id => 'mv.slot.' + id;
+const MAXS = 12;
+```
+
+- `slots()` reads metadata `{id, name, day, zones, saved}`
+- `readSlot(id)` reads full JSON
+- `save()` wrapper copies engine save into current slot and updates metadata
+- `loadSlot(id)` calls `startWorld(s.def, {save:s, slot:id})`
+- deleting removes JSON + index entry; UI requires second tap
+- first run migrates legacy `SKEY` save into a slot
+
+Autosave:
+
+```js
+setInterval(() => { if (mode === 'play') save(); }, 30000);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && mode === 'play') save();
+});
+```
+
+### Other localStorage keys
+
+| Key | Purpose |
+|---|---|
+| `meadowvale.v4` | active/legacy engine save |
+| `mv.slots` | slot metadata index |
+| `mv.slot.<id>` | full save per slot |
+| `mv.saveKey` | live owner/save identity |
+| `mv.me` | current resident handle |
+| `mv.pw.*` | resident password records |
+| `mv.map` | cached minimap |
+| `mv.visited` | tour flags |
+| `mv.q` | suggestion queue |
+| `mv.sugT` | suggestion cooldown |
+| `mv.vote.*` | per-item votes |
+| `mv.super` | graphics super flag |
+
+### Migration and limits
+
+- `v` is the migration hook; new fields optional/defaulted
+- save key name is legacy; do not infer format
+- localStorage typically 5–10 MB per origin
+- quota errors caught and toasted
+- no server-side save for single-player
+- live snapshot chunked at 180,000 chars to avoid Firestore 1 MB doc limit
+
+For a rebuild: IndexedDB for large saves, compact schema, version + migrate.
+
+---
+
+## 14. LIVE CITY
+
+### Product model
+
+- owner builds locally and publishes a snapshot
+- viewers load snapshot and simulate locally from shared wall-clock anchor
+- viewers perform small actions: suggest, vote, claim role, change resident profile
+- owner republishes; viewers poll/subscribe and reload
+- no authoritative real-time simulation; agreement on snapshot + clock
+
+### Modes
+
+```js
+const LIVE = {
+  mode: 'spectator',   // or 'builder'
+  db: null,
+  residents: [],
+  meta: null,
+  founded: Date.UTC(2026, 9, 14),
+  ...
+};
+```
+
+- **Spectator** — default on `/live`; zoom-out limited to `MINZ = 0.55`; browse residents/jobs/homes/suggestions/votes
+- **Builder/Owner** — hidden unlock: tap sound five times, then enter code (64-hex hash, not plaintext); obfuscation, not security
+- **Builder (local)** — `index.html`/app shell; no live backend; full edit rights
+
+### Shared clock
+
+```js
+const LIVE_DAY = 3600;   // one game day per real hour
+
+function liveDayF() {
+  return (Date.now() - LIVE.founded) / 1000 / LIVE_DAY;
+}
+function liveDay() {
+  return Math.floor(liveDayF()) + 1;
+}
+function liveMinOfDay() {
+  const f = liveDayF();
+  return (f - Math.floor(f)) * 1440;
+}
+```
+
+- every viewer computes same day/time from `founded`
+- `founded` stored in live metadata; default `Date.UTC(2026, 9, 14)`
+- different from builder `gameMin`/`DAY_S`: live is one day per hour; builder is one day per 7 minutes
+- `LIVE_DAY` also schedules arrivals, move-in days, events
+
+### Residents
+
+Compact resident:
+
+```js
+{ n: '@handle', h: homeZoneId, w: workZoneId, d: moveDay, id: strHash(n), p: { ...profile } }
+```
+
+- `n` normalized to `@lowercase`, stripped to word/dot/dash chars, max 30
+- `h`/`w` zone ids, `0` if none
+- `d` move-in day
+- `p` optional profile: job, age, gender, hobby, home, role
+- `strHash(n)` is FNV-1a; stable identity without DB id
+
+Sources:
+
+- Google Sheet guest list (column A handle, column B move-in date)
+- manual add via owner UI
+- `incoming` queue for scheduled move-in days
+
+### Jobs and homes algorithm
+
+```js
+// home kind → base property value (not capacity; capacity from zoneCap)
+const HOMES = { houses:220000, hamlet:160000, tnhomes:120000, mansions:480000, apartments:140000 };
+const homeKinds = k => HOMES[k] != null;
+
+function zoneCap(z) {
+  return Math.max(2, z.res || Math.round(z.area * 1.2));
+}
+
+const JOBMAX = { park:[6,15], plaza:[8,6], playground:[10,4], pool:[5,10], forest:[8,6] };
+
+function jobCap(z) {
+  const m = JOBMAX[z.kind];
+  if (m) return clamp(Math.round(z.area / m[0]), 1, m[1]);
+  return Math.max(1, z.jobs || Math.round(z.area * 0.6));
+}
+```
+
+Fill targets:
+
+- homes default 100% of capacity, per-zone override `zcfg[z.id].h`
+- jobs default 90%, per-zone override `zcfg[z.id].j`
+- hotels `max(12, area*4)`
+
+`autoFill`:
+
+1. clear invalid home/work references if zone gone
+2. enforce job capacity; excess workers unemployed
+3. homes sorted by id; homeless resident picks `free[strHash(name) % free.length]`
+4. jobs: nearest workplace to home plus hash jitter up to 8 tiles
+5. unhoused residents go to hotel if room; otherwise wait at arrival point
+
+Because inputs (residents, zone ids, capacities, hashes) are identical on every client, everyone sees same assignments. Core trick: deterministic allocation, not server authority.
+
+### Roles
+
+`systems.js` adds civic roles:
+
+- police chief/officer/detective
+- traffic chief/officer
+- fire chief/firefighter
+- chief doctor/doctor/nurse
+- teacher, etc.
+
+Residents apply; at midnight (UTC day boundary) game picks a holder deterministically from applicants. Holder gets title and possibly workplace override. Light social drama without real-time jobs.
+
+### Arrivals
+
+- newcomers arrive by plane if city has airport (~80%), else train
+- wait at airport/station or hotel
+- `waitZone(r)` chooses hotel, airport, or station
+- `moveCandidates(z)` sorts unhoused by distance from waiting place
+- `moveHere(z,n)` assigns up to n residents to a new home, then refills jobs
+- arrival train adds one carriage per 100 residents (min 4, max 60)
+
+### Snapshot and publish
+
+```js
+function snapshot() {
+  const S = snapshot0();
+  S.pub = Date.now();
+  return S;
+}
+```
+
+`snapshot0()` includes world fields plus:
+
+- `residents` compact tuples
+- `founded`, `fold`, `auto`, `zcfg`, `gf`
+- `money` capped at 10,000,000
+- `wx: 'fair'` (viewers always see fair weather)
+
+Publishing via Firestore-style adapter:
+
+```js
+const str = JSON.stringify(snapshot());
+const size = 180000;
+const parts = Math.ceil(str.length / size);
+const ver = (meta.ver | 0) + 1;
+const col = LIVE.db.collection('city/live/parts');
+
+for (let i = 0; i < parts; i++)
+  await col.doc(`${ver}-${i}`).set({ d: str.slice(i*size, (i+1)*size) });
+
+await LIVE.db.doc('city/live').set({
+  ver, parts, updated: Date.now(),
+  founded: LIVE.founded,
+  residents: LIVE.residents.length,
+  size: str.length
+});
+```
+
+Loading:
+
+```js
+async function readCity(meta) {
+  const col = LIVE.db.collection('city/live/parts');
+  let s = '';
+  for (let i = 0; i < meta.parts; i++) {
+    const d = await col.doc(`${meta.ver}-${i}`).get();
+    if (!d.exists) return null;
+    s += d.data().d;
+  }
+  return JSON.parse(s);
+}
+```
+
+Why chunking:
+
+- Firestore docs ~1 MB limit; mature city can exceed
+- 180k chars leaves headroom
+- old parts deleted after publish
+- version prevents mixing parts from two publishes
+
+### Backend transports
+
+**Tier A — host-injected DB adapter**
+
+```js
+LIVE.db = window.claude && claude.use ? await claude.use('db') : null;
+```
+
+Firestore-like API: `collection`, `doc`, `get`, `set`, `onSnapshot`, `add`, `delete`. Environment-specific; normal site does not inject it.
+
+**Tier B — Google Apps Script + Google Sheet**
+
+`config.js`:
+
+```js
+window.MV_CONFIG = {
+  sheet: 'https://docs.google.com/spreadsheets/d/.../edit',
+  backend: 'https://script.google.com/macros/s/.../exec',
+  ga: 'G-XXXXXXXXXX',
+  moveHourUTC: 17,
+  dateOrder: 'dmy'
+};
+```
+
+Protocol:
+
+- `GET <backend>?what=ver` → `{ver, visits, jv}`
+- `GET <backend>?what=city` → snapshot JSON
+- `POST {type:'city', key, city}` → publish
+- `POST {type:'me', ...}` → resident identity/profile
+- `POST {type:'roster', ...}` → roster sync
+- `POST {type:'visit', ...}` → visit counter
+- `POST {type:'sugg', name, text, day}` → suggestion
+- `POST {type:'claim', n, key, on}` → role claim
+- `navigator.sendBeacon` on `pagehide` for final city save
+
+Sheet guest list fetched and parsed every 60 seconds.
+
+**Tier C — static fallback**
+
+- `data/city.json` fetched on load, polled every 180 seconds
+- backend unreachable → static file, not error screen
+- owner can export same JSON and deploy manually
+
+Architecture principle: live feature is optional and degradable. Missing backend never blocks builder; missing live snapshot never blocks menu.
+
+### Privacy and security boundaries
+
+- builder never calls network (config blanked on `index.html`)
+- live page sends only `/privacy` data
+- owner mode protected by code hash + save key, not real auth
+- suggestions/profiles are UGC; escape before DOM insertion
+- do not trust client-published snapshots publicly; validate size/schema/ownership server-side
+- rate-limit votes/suggestions; current device-code cooldown is weak
+
+### Live architecture principle
+
+Snapshot + deterministic local simulation + tiny write API:
+
+- no real-time server loop
+- no per-frame sync
+- no authoritative physics
+- viewers can play offline after load
+- owner publishes from normal browser
+- world feels alive because clock/rules shared
+
+Does not support simultaneous construction, true multiplayer, or cheat-resistant economy. Acceptable trade-off for cozy social diorama.
+
+---
+
+## 15. THE 11 PATCHES
+
+### Four mechanisms
+
+**1. Function replacement**
+
+```js
+openHof = function (tab) { ... };
+```
+
+Later assignment wins. Old implementation discarded at load time. Used for whole-dialog rewrites.
+
+**2. Painter registration**
+
+```js
+DRAWX.obsv = (o, p) => { ... };
+```
+
+Renderer looks up by object key. New building needs no renderer change.
+
+**3. Catalog mutation**
+
+```js
+KIND.pgrid4b = { ... };
+add('pgrid4b', { ... });
+Object.assign(KIND, { ... });
+```
+
+Dock, placement, simulation, save read same live catalogs.
+
+**4. Runtime CSS injection**
+
+```js
+const st = document.createElement('style');
+st.textContent = '#lpw { ... }';
+document.head.appendChild(st);
+```
+
+Each patch ships its own dialog styles.
+
+### Patch ledger
+
+| # | File | Theme | LOC | Notable mechanisms |
+|---|---|---|---:|---|
+| 1 | `day9.js` | Jobs, passwords, community plots, 17 painters | 496 | `ranksOf`, `syncRoles`, `workersOf`, `placeLabel`, `jobFinder`, `pwGet/pwSet/pwAsk`, 17 `DRAWX` painters |
+| 2 | `day10.js` | Quality tiers, shores, footpaths, dirt traffic | 143 | `qLevel`, `applyQ`, `cycleQ`, `fpPaths`, `pathOK`, `drawFootpaths`, `shorePath` |
+| 3 | `day11.js` | Founders' Quarter, plots, construction, newspaper, sea fog | 295 | `plotAt`, `plotState`, `plotBuilt`, `plotIncome`, `FOGSPR`, crane/frame painters |
+| 4 | `day12.js` | One wallet, frame smoothing, road-join healing | 183 | wallet ledger, `cornerFree`, `healRoadsAt`, `healAllRoads`, route caches |
+| 5 | `day13.js` | Art pass: furniture, statues, planting, roof signs | 126 | `bench`, `planter`, `slamp`, `statue`, `obelisk`, `dressUp`, `dedupeBuilds` |
+| 6 | `day15.js` | Land market, Hall of Fame v1, minimap, folded cards | 270 | `landArea`, `landPrice`, `ownIndex`, `hofData`, `openHof`, `mapBuild`, `mapProj` |
+| 7 | `day15b.js` | Halloween overlay | 250 | `withAlpha`, `ghostSpots`, `batFlocks`, `seaMon`, `ghostShip`, `FOGH` |
+| 8 | `day15c.js` | Observatory, spa, Kazakh district | 114 | pure painters: `obsv`, `dish`, `bathhouse`, `yurt`, `shatyr`, `khan` |
+| 9 | `day16.js` | Honest wallet, pinned jobs/homes, player card, bank | 209 | `baseSavings`, `plotBuilt`, `plotWorth`, `pinBack`, `avatarSvg`, `openPanel`, `loanLine` |
+| 10 | `day16b.js` | Day care, agency, florist, law firm, luxury builds | 89 | `camrig`, `mystatue`, `helipad`, `add('rgrid4b')`, `add('pgrid4b')` |
+| 11 | `day16c.js` | Hall of Fame rework: net worth, podium, crowns | 64 | `netWorthOf`, `crownSvg`, `openHof` replacement, draw-pass crowns |
+
+Sum of ledger LOC: 2,239. Architecture page headline: 1,916. File map sum: 2,228. Another stale-total drift.
+
+### What patches enable
+
+- fast iteration: one file + one script tag
+- no migration of base engine
+- content-additive painters/catalogs
+- easy rollback by deleting a script tag
+- source-linkable history
+
+### What they cost
+
+- load order hidden dependency graph
+- global collisions; last assignment wins silently
+- dead code remains
+- no encapsulation; patches reach into private state/UI
+- no tests; behaviour verified by playing
+- hard to tree-shake/type-check
+- CSS sprawl
+- debugging is "which assignment won?"
+
+For a new project, keep small additive content modules but use explicit registries, imports, and tests.
+
+---
+
+## 16. DEPLOYMENT AND OPERATIONS
+
+- static site; no server runtime required for builder
+- Firebase Hosting mirror: `firebase.json` with `public: "."`, `cleanUrls: true`, `trailingSlash: false`, 1-hour cache for `js`/`css`/`woff2`; ignores README/scrape/dotfiles; deploy `firebase deploy --only hosting` to project `meadowvale-city-mv`
+- originally Vercel; static deploy, clean URLs
+- any static host works (Netlify, Cloudflare Pages, GitHub Pages, S3+CDN)
+- HTML short cache; JS/CSS/fonts 1 hour; no content hashing, so aggressive immutable caching is unsafe
+- external calls: Google Fonts (original), GA4 if configured, Apps Script backend (live only), Google Sheet CSV (live every 60s), `data/city.json` (live fallback every 180s), `/_vercel/insights/script.js` on game pages, JSZip from cdnjs only for export/import
+- builder makes zero required network calls
+- size: ~1.4 MB total including fonts; 36 JS files ~8,360 LOC; no images/audio/video
+- largest files: `live.js` ~890 LOC/124 KB, `ui.js` ~435 LOC/54 KB, `render.js` ~408 LOC/49 KB, `buildings.js` ~395 LOC/48 KB
+- no server-side error tracking/crash reporting/synthetic monitoring
+- security headers not evident; for rebuild add HTTPS, CSP, nosniff, referrer/permissions policy, sanitize UGC, validate snapshots, real auth, rate limits, no secrets in client JS
+
+---
+
+## 17. DESIGN PRINCIPLES AND DISCREPANCIES
+
+### Principles worth stealing
+
+1. world is data, not a scene graph
+2. one coordinate system
+3. pack small (integer keys, bitmasks, flat arrays)
+4. generate, don't load
+5. determinism where it matters
+6. one canvas, one sorted pass
+7. content is registration
+8. fail soft
+9. local-first
+10. progressive social
+11. ship by addition
+12. measure the artifact
+
+### Copy for an equivalent
+
+- zone-as-place abstraction
+- generator/plan/level model
+- isometric projection + depth sort + chunk culling
+- tile/chunk key packing and flat maps
+- painter registry and procedural content
+- local save + compact snapshot
+- snapshot-based live mode
+- fail-soft loop and quality tiers
+- pre-rendered minimap
+
+### Change for a new build
+
+- ES modules + explicit imports instead of globals/load order
+- fixed timestep accumulator (30/60 Hz) + render interpolation
+- TypeScript/JSDoc types for snapshots, zones, tools
+- unit tests for projection, key packing, save roundtrip, resident assignment, pathfinding
+- IndexedDB for large saves
+- schema validation + migrations
+- real auth + server-side authorization for owner actions
+- replace Google Sheets with SQLite/Postgres/KV + object storage at scale
+- content tooling: catalog page, seed inspector, screenshot regression
+- accessibility: keyboard camera, reduced motion, color-blind-safe palette, focus states
+- telemetry/crash reporting
+- asset/build versioning and cache busting
+
+### Documented vs actual discrepancies
+
+1. **"30 Hz fixed step"** — code is variable dt clamped 50 ms; `HZ=30` is projection.
+2. **"three HTML pages"** — then lists four; site has six routes (`/patches`, `/assets` too).
+3. **"three entry points"** — again lists four.
+4. **"609 assets"** — catalog entries, not files; visible categories sum to 608; zero binaries.
+5. **"1,916 patch LOC"** — ledger totals 2,239; file map 2,228.
+6. **"Four mechanisms every patch uses"** — not every patch uses all four; some are pure painters/content.
+7. **"Every patch adds its own dialog CSS"** — only patches with new dialogs inject CSS.
+8. **Privacy policy names `meadowvale-city.vercel.app`** while mirror is Firebase.
+9. **Mirror still loads `/_vercel/insights/script.js`** on game pages (`/`, `/live`), so not fully dependency-free; architecture page claims a stub replaced it.
+10. **`MV_APP=1` is set on web `index.html`**, while `app.js` uses `!MV_WEB` to detect packaged app; flags are confusing.
+
+---
+
+## 18. BUILD-YOUR-OWN BLUEPRINT
+
+### Recommended stack
+
+| Concern | Choice | Why |
+|---|---|---|
+| Language | TypeScript or JS+JSDoc | snapshot/tool schemas are bug-prone |
+| Build | Vite | fast dev, hashed assets, no framework |
+| Render | Canvas 2D first | same trade-offs; WebGL only if needed |
+| UI | DOM + CSS | text/menus/dialogs |
+| State | plain objects/maps + explicit stores | avoid heavy framework in hot loop |
+| Sim | fixed 30 Hz accumulator | deterministic, stable traffic/economy |
+| Save | IndexedDB + compact JSON | large cities, async, versioned |
+| Live | static snapshot + serverless API/KV | cheap, cacheable |
+| Tests | Vitest + Playwright | unit + browser smoke/perf |
+| Deploy | static host + CDN | same as Meadowvale |
+
+### Repo layout
+
+```
+/src
+  /core
+    constants.ts
+    math.ts          // clamp, lerp, hash, rng
+    iso.ts           // idx/tX/tY, ckOf, P, w2s, s2w, setWorldTf
+    camera.ts
+    loop.ts          // fixed-step accumulator + render
+  /world
+    types.ts
+    world.ts
+    terrain.ts       // SDF, coast, marching squares
+    chunks.ts
+    zones.ts
+    generators.ts
+    roads.ts
+    rail.ts
+    objects.ts
+  /sim
+    sim.ts
+    economy.ts
+    traffic.ts
+    pedestrians.ts
+    services.ts
+    weather.ts
+    time.ts
+  /render
+    render.ts
+    painters/buildings.ts
+    painters/vehicles.ts
+    painters/nature.ts
+    painters/effects.ts
+    shadows.ts
+    lighting.ts
+    buffers.ts
+    lod.ts
+  /input
+    pointer.ts
+    tools.ts
+    plan.ts
+  /ui
+    hud.ts
+    dock.ts
+    screens.ts
+    cards.ts
+    dialogs.ts
+    toast.ts
+  /save
+    schema.ts
+    serialize.ts
+    migrate.ts
+    slots.ts
+  /live
+    live.ts
+    residents.ts
+    publish.ts
+    api.ts
+  /content
+    kinds.ts
+    tools.ts
+    crops.ts
+    worlds.ts
+    fences.ts
+  main.ts
+/tools
+  catalog.html
+/tests
+  iso.test.ts
+  save.test.ts
+  live.test.ts
+  perf.spec.ts
+```
+
+For a no-build clone, same logical folders, documented load order, IIFE namespaces (`MV.Core`, etc.) instead of bare globals.
+
+### Module contracts
+
+```ts
+// core/iso.ts
+export const K16 = 32768;
+export const idx = (x: number, y: number): number => (y + K16) * 65536 + (x + K16);
+export const tX = (i: number): number => i % 65536 - K16;
+export const tY = (i: number): number => Math.floor(i / 65536) - K16;
+export const CH = 20, OX = 9, OY = 7;
+export const ckOf = (x: number, y: number): number => ...;
+export const P = (x: number, y: number, z: number): [number, number] => ...;
+export const w2s = (x: number, y: number, z: number, cam: Camera, w: number, h: number): [number, number] => ...;
+export const s2w = (sx: number, sy: number, cam: Camera, w: number, h: number): [number, number] => ...;
+
+// world/world.ts
+export interface WorldApi {
+  start(def: WorldDef, opts?: { save?: Snapshot; live?: boolean }): Promise<void>;
+  reset(): void;
+  ensureChunk(i: number, j: number): void;
+  isWater(x: number, y: number): boolean;
+  heightAt(x: number, y: number): number;
+}
+
+// world/zones.ts
+export interface ZoneApi {
+  create(kind: string, x0: number, y0: number, x1: number, y1: number, opt?: ZoneOpt): Zone | null;
+  remove(id: number): void;
+  shape(z: Zone): Shape;
+  applyLevel(z: Zone, from: number, to: number): void;
+  at(x: number, y: number): Zone | null;
+}
+
+// world/roads.ts
+export interface RoadApi {
+  set(x: number, y: number, type: number): void;
+  remove(x: number, y: number): void;
+  mask(x: number, y: number): number;
+  bfs(start: number, goal: number, max?: number): number[] | null;
+}
+
+// sim/sim.ts
+export interface SimApi {
+  update(dt: number): void;       // fixed step, game seconds
+  setSpeed(speed: 0 | 1 | 2 | 4): void;
+  readonly gameMin: number;
+  readonly money: number;
+}
+
+// render/render.ts
+export interface RenderApi {
+  frame(alpha: number): void;
+  resize(w: number, h: number, dpr: number): void;
+  invalidateChunk(ck: number): void;
+}
+
+// input/tools.ts
+export interface ToolApi {
+  select(id: string): void;
+  planDrag(d: Drag): Plan;
+  commitDrag(d: Drag, plan: Plan): void;
+  hover(x: number, y: number): HoverInfo | null;
+}
+
+// save/schema.ts
+export interface SaveApi {
+  serialize(): Snapshot;
+  deserialize(s: Snapshot): void;
+  migrate(raw: unknown): Snapshot;
+}
+
+// live/live.ts
+export interface LiveApi {
+  loadSnapshot(s: Snapshot): void;
+  snapshot(): Snapshot;
+  publish(): Promise<void>;
+  poll(): Promise<void>;
+  readonly mode: 'spectator' | 'builder';
+}
+```
+
+Rules:
+
+- `sim` never imports `render`
+- `render` never mutates `sim` state
+- `input` produces plans; only `commit` mutates world
+- `save` depends on world types, not render/UI
+- `live` depends on `save` + `world`, not `render`
+- `ui` talks to `sim`/`world` through commands
+
+### Data schemas
+
+```ts
+export interface WorldDef {
+  type: 'gen' | 'preset';
+  name: string;
+  terrain?: 'lake' | 'sea' | 'inland';
+  seed?: number;
+  rich?: boolean;
+  id?: string;
+  seaY?: number;
+  stjames?: boolean;
+}
+
+export interface Zone {
+  id: number;
+  kind: string;
+  x0: number; y0: number; x1: number; y1: number;
+  seed: number;
+  shape: { type: 'rect' | 'rrect' | 'blob'; ext: [number, number, number, number] };
+  sides: Array<'w' | 'e' | 'n' | 's'>;
+  level: number;
+  maxLevel: number;
+  crop?: string;
+  growth?: number;
+  title?: string;
+  style?: string;
+  cost: number;
+  harvests: number;
+  tiles: number[];
+  objects: WorldObject[];
+  features: Feature[];
+  plan: PlannedObject[][];
+}
+
+export interface WorldObject {
+  k: string;
+  x: number; y: number;
+  w?: number; dep?: number; h?: number; rh?: number;
+  col?: string; rc?: string;
+  seed?: number;
+  zid?: number;
+  born: number;
+  user?: boolean;
+  dying?: number;
+  [extra: string]: unknown;
+}
+
+export interface Resident {
+  n: string;
+  h: number;
+  w: number;
+  d: number;
+  id: number;
+  p?: ResidentProfile;
+}
+
+export interface SnapshotV1 {
+  v: 1;                      // your schema version; Meadowvale's is 5
+  def: WorldDef;
+  money: number;
+  gameMin: number;
+  wx: string;
+  cam: [number, number, number];
+  zones: SerializedZone[];
+  roads: number[];           // triples
+  rails: number[];           // pairs
+  edges: Array<[number, number]>;
+  signs: Array<[number, string]>;
+  ow: Array<[number, number]>;
+  trees: Array<[number, number, string, number, number]>;
+  gen: number[];
+  settings: { grid: boolean };
+  residents?: CompactResident[];
+  founded?: number;
+  auto?: { h: boolean; j: boolean };
+  zcfg?: Record<number, { h?: number; j?: number }>;
+  gf?: { h: number; j: number };
+}
+```
+
+Serialization rules:
+
+- omit `undefined`
+- round floats that do not need precision
+- arrays for repeated tuples
+- version field first
+- migration for every schema change
+
+### Milestones
+
+**M0 — Isometric skeleton (1–2 days)**
+
+- canvas fills viewport, DPR-aware
+- camera pan/zoom/inertia/clamp
+- `idx/tX/tY`, `ckOf`, `P`, `w2s`, `s2w` with unit tests
+- flat grid + colored diamonds
+- tile picking at all zooms
+
+Acceptance: 60 fps at 1080p with grid; cursor-to-tile exact; no scrollbars.
+
+**M1 — Terrain and networks (3–5 days)**
+
+- SDF terrain lake/sea/inland; marching-squares water paths per chunk
+- chunk generation/caching/culling
+- 4-bit road graph, line drag, auto-linking, decor
+- 8-bit rail graph, crossings, simple train
+- water/land collision for placement
+
+Acceptance: road across chunks; reload rebuilds; organic water; 1,000 road tiles at 60 fps.
+
+**M2 — Zones and generators (4–6 days)**
+
+- `KIND` catalog with 10–15 kinds
+- rect/rrect/blob shapes, ownership, reshape
+- generators for farm, houses, park, pond, field
+- `place`/`addPlan`/`applyLevel` growth
+- save/load zones by seed and level
+
+Acceptance: farm reload identical; zones meet roads without gaps; 100 zones at 60 fps.
+
+**M3 — Simulation (4–6 days)**
+
+- fixed-step clock, money, zone income
+- crops/harvest
+- traffic on road graph, service dispatch BFS
+- power ratio, weather, day/night
+- particles, smoke, simple pedestrians
+
+Acceptance: city earns, fields harvest, fire truck reaches fire, night lights; stable 1×/4×.
+
+**M4 — Renderer polish (4–6 days)**
+
+- painter registry, 30–50 buildings
+- shadows, ambient tint, window/street glows, fog/rain
+- LOD/quality tiers, offscreen buffers
+- pre-rendered minimap
+
+Acceptance: 2,000 visible objects at 60 fps desktop/30 mobile; no chunk-edge popping; intentional night.
+
+**M5 — Input, UI, persistence (4–6 days)**
+
+- dock categories/tools, previews, cost/validity
+- HUD/screens/dialogs/toasts
+- save slots, autosave, migration, quota
+- home/build/new/worlds/saves flows
+
+Acceptance: new player builds/saves/reloads without instructions; 12 slots; corrupted save fails gracefully.
+
+**M6 — Content pass (1–2 weeks)**
+
+- 100+ kinds/painters, vehicles, trees, props, landmarks
+- seed variants/palette discipline
+- audio synthesis
+- catalog page
+
+Acceptance: varied content; no identical farms; catalog renders every painter; payload under ~2 MB.
+
+**M7 — Live spectator (3–5 days)**
+
+- snapshot export/import
+- residents, homes/jobs, deterministic allocation
+- shared clock, spectator camera, resident cards
+- static `city.json` fallback
+
+Acceptance: two browsers same residents/homes/jobs; offline fallback works.
+
+**M8 — Live social (3–5 days)**
+
+- publish/version/chunking
+- suggestions/votes/role claims/arrivals
+- owner unlock/moderation
+- real auth/authorization if public
+
+Acceptance: owner publishes, viewer sees within one poll; writes validated/rate-limited; no XSS.
+
+**M9 — Hardening (ongoing)**
+
+- mobile profiling
+- memory leak checks
+- save corruption/fuzz
+- accessibility/reduced motion
+- cache busting, CSP, monitoring
+
+### Performance budgets
+
+| Metric | Target |
+|---|---|
+| Desktop frame | 16.6 ms (60 fps), JS < 8 ms |
+| Mobile frame | 33 ms (30 fps), JS < 14 ms |
+| Visible objects | 2,000–3,000 |
+| Dynamic agents | < 500 |
+| Draw path count | < 5,000/frame |
+| Shadow fills | 1/frame |
+| Save size | < 2 MB typical, < 5 MB max |
+| Load time | < 300 ms for 1 MB save |
+| Initial JS | < 500 KB gzip |
+| Memory | < 250 MB mobile |
+| Input latency | < 16 ms preview |
+
+Rules:
+
+- never iterate whole world per frame; active lists + visible chunks
+- city-wide recompute at 1 Hz or on change
+- cache `Path2D` per chunk
+- batch shadows
+- decimate small objects at low zoom before draw entries
+- avoid hot-loop allocations
+- profile mid-range Android
+
+### Test plan
+
+**Unit**
+
+- `idx/tX/tY` roundtrip for negative/positive/boundary
+- `ckOf` uniqueness
+- `P/w2s/s2w` inverse within epsilon
+- `bfsPath` connected or null
+- save→load→save equivalent
+- resident allocation identical for identical inputs
+- economy no NaN/Infinity; money caps
+
+**Integration**
+
+- zone grows all levels, save/reload, compare counts/positions
+- roads across chunk boundaries, masks/links
+- rail diagonal, corner blocking, crossings
+- fire dispatch/extinguish
+- publish snapshot, load second context, compare residents/homes/jobs
+
+**Browser**
+
+- scripted 60 fps benchmark
+- mobile viewport/DPR/touch pinch
+- localStorage quota failure
+- offline load
+- XSS payloads in names/suggestions
+- reduced motion/keyboard
+
+**Visual**
+
+- screenshot regression every painter at 3 zooms
+- night/day/rain/fog screenshots
+- chunk-edge popping
+
+### Content pipeline
+
+1. `KindDef` with placement/economy
+2. painter using shared primitives; deterministic from `seed`
+3. optional generator/plan for zones
+4. tool entry + dock group
+5. catalog render at 3 zooms × 3 seeds
+6. save/load reconstruction
+7. live jobs/homes if relevant
+8. screenshot/palette review
+
+Art direction:
+
+- 2:1 isometric, 32×16 ground diamond, 30 px per height unit
+- flat shading, 2–3 tones per material; no gradients except skies/water/glows
+- limited/no outline; value contrast
+- warm plaster, terracotta, olive/cypress green, dusty road, blue-grey water
+- silhouettes readable at 0.5×
+- no texture detail that becomes noise when zoomed out
+
+### Live mode plan
+
+1. export/import JSON — prove snapshot roundtrip
+2. static `city.json` — viewers load
+3. serverless publish — POST writes versioned blob to object storage/KV; meta endpoint returns latest
+4. resident actions — tiny API for profile/vote/suggestion; validate/rate-limit
+5. auth — owner login; server checks ownership before publish
+6. moderation — escape/validate UGC; audit log; deletion
+
+Do not build real-time authoritative simulation unless simultaneous play is required.
+
+### Acceptance criteria for an equivalent
+
+- new player from home to living town in under 2 minutes without docs
+- 30+ kinds, 20+ painters, 3 terrains, roads/rail, traffic, services, weather, day/night
+- saves survive reload/backgrounding; 12 slots; corrupted save graceful
+- 60 fps desktop / 30 fps mobile mid-sized town
+- zero binary art/audio required
+- shared city publishable/viewable with identical residents/homes/jobs
+- tests for projection/save/allocation/pathfinding
+- docs generated or verified against source
+
+### Anti-patterns
+
+- bare globals without namespacing/load-order doc
+- patch-by-redefinition without tests
+- saving generated object graph
+- re-rendering minimap every frame
+- per-object shadow blur/filter
+- mixing render state into simulation objects
+- unbounded particles/vehicles/peds
+- `Math.random()` for persistent/shared state
+- hidden owner codes as security
+- trusting client-published snapshots
+- multi-megabyte localStorage saves
+- real-time server before proving single-player loop
+
+---
+
+## 19. FIRST TASK FOR YOU, CHATGPT
+
+Do not build everything at once.
+
+1. Produce a one-page design pillar summary.
+2. Produce a repo/file plan.
+3. Produce exact module contracts and the snapshot schema.
+4. Produce the M0 implementation plan with acceptance tests.
+5. Implement **M0 only**:
+   - 60 fps isometric grid
+   - pan/zoom/inertia/clamp
+   - exact tile picking at all zooms
+   - unit tests for `idx/tX/tY`, `ckOf`, and projection inverses
+6. Stop and wait for approval before M1.
+
+Style requirements:
+
+- small files
+- explicit types
+- pure math functions
+- comments explaining invariants, not restating code
+- flag deliberate simplifications
+- never claim a feature works without a test or runnable check
+
+---
+
+**End of dossier. Acknowledge with “Dossier loaded — ready for M0” and then begin the first task.**
